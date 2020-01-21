@@ -1,7 +1,5 @@
 ; Program to drive SID using 16f887 and a shift register
-
-
-
+; On GitHub
 #include <p16F887.inc>
 
 	__config	_CONFIG1, _INTRC_OSC_CLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
