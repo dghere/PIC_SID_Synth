@@ -1,0 +1,2250 @@
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ; Program to drive SID using 16f887 and a shift register
+                      00002 
+                      00003 
+                      00004 
+                      00005 #include <p16F887.inc>
+                      00001         LIST
+                      00002 ; P16F887.INC  Standard Header File, Version 1.00    Microchip Technology, Inc.
+                      00617         LIST
+                      00006 
+2007   20D5           00007         __config        _CONFIG1, _INTRC_OSC_CLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _CP
+                            D_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+2008   3EFF           00008         __config    _CONFIG2, _WRT_OFF & _BOR21V
+                      00009         errorlevel -302
+                      00010         errorlevel -305
+                      00011 
+                      00012 #define MCP_WRITE       0x40
+                      00013 
+                      00014 #define LC01CTRLIN      0xa0
+                      00015 #define LC01CTRLOUT     0xa1
+                      00016 #define LC01ADDR        0x12
+                      00017 #define LC01DATA        0x34
+                      00018 #define BAUD            .100
+                      00019 #define FOSC            .4000
+                      00020 
+                      00021 
+  00000001            00022 SIDRW   equ     1                                               ; PORTE  old PORTB
+                      00023 ;Shift Register
+  00000005            00024 SER             equ     5                                               ; PORTC  old PORTB
+  00000000            00025 SRCLK   equ     0                                               ; PORTC  old PORTB
+  00000001            00026 RCLK    equ     1                                               ; PORTC  old PORTA
+  00000000            00027 SRCLR   equ     0                                               ; PORTE  old PORTA
+                      00028 
+                      00029 ; Set Serial Buffer Length
+  00000010            00030 RX_BUFF_LEN     EQU             .16
+  00000010            00031 TX_BUFF_LEN     EQU             RX_BUFF_LEN
+                      00032 
+                      00033 ; Buffer status bits
+  00000000            00034 TX_BUFF_FULL    EQU             0
+  00000001            00035 TX_BUFF_EMPTY   EQU             1
+  00000002            00036 RX_BUFF_FULL    EQU             2
+  00000003            00037 RX_BUFF_EMPTY   EQU             3
+                      00038 
+                      00039 
+                      00040 
+                      00041         cblock 0x20
+  00000020            00042 tobereturned
+                      00043 ;delay
+  00000021            00044 sidaddress
+  00000022            00045 freqH
+  00000023            00046 freqL
+  00000024            00047 counter
+  00000025            00048 attdec
+  00000026            00049 susrel
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000027            00050 pulseWidthH
+  00000028            00051 pulseWidthL
+  00000029            00052 note_index
+                      00053 ;EUSART
+  0000002A            00054 flags
+  0000002B            00055 rx_start_ptr
+  0000002C            00056 rx_end_ptr
+  0000002D            00057 tx_start_ptr
+  0000002E            00058 tx_end_ptr
+  0000002F            00059 buffer_data
+  00000030            00060 midi_byte
+  00000031            00061 midi_data1
+  00000032            00062 midi_data2
+  00000033            00063 prev_command
+                      00064 
+  00000034            00065 digit_a
+  00000035            00066 digit_b
+  00000036            00067 digit_c
+  00000037            00068 num_value
+  00000038            00069 temp_value
+  00000039            00070 prev_value
+                      00071         endc
+                      00072 
+                      00073         cblock 0x70
+  00000070            00074 w_temp
+  00000071            00075 status_temp
+  00000072            00076 pcl_save
+  00000073            00077 fsr_temp
+                      00078         endc
+                      00079 
+                      00080         cblock 0xf0
+  000000F0            00081 control_byte
+  000000F1            00082 address
+  000000F2            00083 data_byte
+  000000F3            00084 data_high
+  000000F4            00085 data_low
+  000000F5            00086 number
+  000000F6            00087 delay
+  000000F7            00088 row
+  000000F8            00089 column
+  000000F9            00090 character
+  000000FA            00091 message_index
+  000000FB            00092 string_index
+  000000FC            00093 offset
+  000000FD            00094 tdata
+                      00095         endc
+                      00096 
+                      00097         cblock 0xa0
+  000000A0            00098 rx_buffer:RX_BUFF_LEN
+                      00099         endc
+                      00100 
+                      00101         cblock 0x120
+  00000120            00102 tx_buffer:TX_BUFF_LEN
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00103         endc
+                      00104 
+                      00105 
+                      00106 ; executed upon reset
+0000                  00107         org             0x0000
+0000                  00108 ResetCode:
+0000   018A           00109         clrf    PCLATH
+0001   28F9           00110         goto    Start
+                      00111 
+                      00112 ; executed upon interrupt
+0004                  00113         org             0x0004
+0004                  00114 InterruptCode:
+0004   00F0           00115         movwf   w_temp
+0005   0E03           00116         swapf   STATUS, w
+0006   0183           00117         clrf    STATUS
+0007   00F1           00118         movwf   status_temp
+0008   080A           00119         movf    PCLATH, w
+0009   00F2           00120         movwf   pcl_save
+000A   018A           00121         clrf    PCLATH
+000B   0804           00122         movf    FSR, w
+000C   00F3           00123         movwf   fsr_temp
+                      00124 
+000D   1283 1303      00125         banksel INTCON
+000F   138B           00126         bcf             INTCON, 7                       ; disable interrupts
+                      00127         
+0010   1283 1303      00128         banksel PIR1                            ; check for interrupt on serial
+0012   1A8C           00129         btfsc   PIR1, RCIF
+0013   1683           00130         bsf             STATUS, RP0
+0014   1A8C           00131         btfsc   PIE1, RCIE
+0015   2817           00132         goto    GetSerialData
+                      00133 
+0016   282C           00134         goto    ExitInterrupt
+                      00135 
+0017                  00136 GetSerialData:
+0017   1283 1303      00137         banksel RCSTA
+0019   1898           00138         btfsc   RCSTA, OERR
+001A   2822           00139         goto    ErrSerialOver
+001B   1918           00140         btfsc   RCSTA, FERR
+001C   2828           00141         goto    ErrSerialFrame
+                      00142 
+001D   192A           00143         btfsc   flags, RX_BUFF_FULL
+001E   2828           00144         goto    RxOverErr
+001F   081A           00145         movf    RCREG, w
+0020   225C           00146         call    PutRxBuffer
+                      00147 
+0021   282C           00148         goto    ExitInterrupt
+                      00149 
+0022                  00150 ErrSerialOver:
+0022   1283 1303      00151         banksel RCSTA
+0024   1218           00152         bcf             RCSTA, CREN
+0025   0000           00153         nop
+0026   1618           00154         bsf             RCSTA, CREN
+0027   282C           00155         goto    ExitInterrupt
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00156 
+0028                  00157 ErrSerialFrame:
+0028                  00158 RxOverErr:
+0028   1283 1303      00159         banksel RCREG
+002A   081A           00160         movf    RCREG, w
+002B   282C           00161         goto    ExitInterrupt
+                      00162 
+                      00163 
+                      00164 
+002C                  00165 ExitInterrupt:
+002C   0873           00166         movf    fsr_temp, w
+002D   0084           00167         movwf   FSR
+002E   0872           00168         movf    pcl_save, w
+002F   008A           00169         movwf   PCLATH
+0030   0E71           00170         swapf   status_temp, w
+0031   0083           00171         movwf   STATUS
+0032   0EF0           00172         swapf   w_temp, f
+0033   0E70           00173         swapf   w_temp, w
+                      00174 
+0034   1283 1303      00175         banksel INTCON
+0036   178B           00176         bsf             INTCON, 7                               ; enable peripheral interrupts again
+0037   170B           00177         bsf             INTCON, 6
+                      00178 
+0038   0009           00179         retfie
+                      00180 
+0039                  00181 HighFreqLookup:
+0039   0782           00182         addwf   PCL
+                      00183 
+003A   3401           00184         retlw   0x01
+003B   3401           00185         retlw   0x01
+003C   3401           00186         retlw   0x01
+003D   3401           00187         retlw   0x01
+003E   3401           00188         retlw   0x01
+003F   3401           00189         retlw   0x01
+0040   3401           00190         retlw   0x01
+0041   3401           00191         retlw   0x01
+0042   3401           00192         retlw   0x01
+0043   3401           00193         retlw   0x01
+0044   3401           00194         retlw   0x01
+0045   3402           00195         retlw   0x02
+                      00196 
+0046   3402           00197         retlw   0x02
+0047   3402           00198         retlw   0x02
+0048   3402           00199         retlw   0x02
+0049   3402           00200         retlw   0x02
+004A   3402           00201         retlw   0x02
+004B   3402           00202         retlw   0x02
+004C   3403           00203         retlw   0x03
+004D   3403           00204         retlw   0x03
+004E   3403           00205         retlw   0x03
+004F   3403           00206         retlw   0x03
+0050   3403           00207         retlw   0x03
+0051   3404           00208         retlw   0x04
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00209 
+0052   3404           00210         retlw   0x04
+0053   3404           00211         retlw   0x04
+0054   3404           00212         retlw   0x04
+0055   3405           00213         retlw   0x05
+0056   3405           00214         retlw   0x05
+0057   3405           00215         retlw   0x05
+0058   3406           00216         retlw   0x06
+0059   3406           00217         retlw   0x06
+005A   3406           00218         retlw   0x06
+005B   3407           00219         retlw   0x07
+005C   3407           00220         retlw   0x07
+005D   3408           00221         retlw   0x08
+                      00222 
+005E   3408           00223         retlw   0x08
+005F   3409           00224         retlw   0x09
+0060   3409           00225         retlw   0x09
+0061   340A           00226         retlw   0x0a
+0062   340A           00227         retlw   0x0a
+0063   340B           00228         retlw   0x0b
+0064   340C           00229         retlw   0x0c
+0065   340C           00230         retlw   0x0c
+0066   340D           00231         retlw   0x0d
+0067   340E           00232         retlw   0x0e
+0068   340F           00233         retlw   0x0f
+0069   3410           00234         retlw   0x10
+                      00235 
+006A   3411           00236         retlw   0x11
+006B   3412           00237         retlw   0x12
+006C   3413           00238         retlw   0x13
+006D   3414           00239         retlw   0x14
+006E   3415           00240         retlw   0x15
+006F   3416           00241         retlw   0x16
+0070   3418           00242         retlw   0x18
+0071   3419           00243         retlw   0x19
+0072   341B           00244         retlw   0x1b
+0073   341C           00245         retlw   0x1c
+0074   341E           00246         retlw   0x1e
+0075   3420           00247         retlw   0x20
+                      00248 
+0076   3422           00249         retlw   0x22
+0077   3424           00250         retlw   0x24
+0078   3426           00251         retlw   0x26
+0079   3428           00252         retlw   0x28
+007A   342B           00253         retlw   0x2b
+007B   342D           00254         retlw   0x2d
+007C   3430           00255         retlw   0x30
+007D   3433           00256         retlw   0x33
+007E   3436           00257         retlw   0x36
+007F   3439           00258         retlw   0x39
+0080   343D           00259         retlw   0x3d
+0081   3440           00260         retlw   0x40
+                      00261 
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0082   3444           00262         retlw   0x44
+0083   3448           00263         retlw   0x48
+0084   344C           00264         retlw   0x4c
+0085   3451           00265         retlw   0x51
+0086   3456           00266         retlw   0x56
+0087   345B           00267         retlw   0x5b
+0088   3460           00268         retlw   0x60
+0089   3466           00269         retlw   0x66
+008A   346C           00270         retlw   0x6c
+008B   3473           00271         retlw   0x73
+008C   347A           00272         retlw   0x7a
+008D   3481           00273         retlw   0x81
+                      00274 
+008E   3489           00275         retlw   0x89
+008F   3491           00276         retlw   0x91
+0090   3499           00277         retlw   0x99
+0091   34A3           00278         retlw   0xa3
+0092   34AC           00279         retlw   0xac
+0093   34B7           00280         retlw   0xb7
+0094   34C1           00281         retlw   0xc1
+0095   34CD           00282         retlw   0xcd
+0096   34D9           00283         retlw   0xd9
+0097   34E6           00284         retlw   0xe6
+0098   34F4           00285         retlw   0xf4
+                      00286         
+                      00287 
+                      00288 
+0099                  00289 LowFreqLookup:
+0099   0782           00290         addwf   PCL
+                      00291 
+009A   3412           00292         retlw   0x12
+009B   3423           00293         retlw   0x23
+009C   3434           00294         retlw   0x34
+009D   3446           00295         retlw   0x46
+009E   345A           00296         retlw   0x5a
+009F   346E           00297         retlw   0x6e
+00A0   3484           00298         retlw   0x84
+00A1   348B           00299         retlw   0x8b
+00A2   34B3           00300         retlw   0xb3
+00A3   34CD           00301         retlw   0xcd
+00A4   34E9           00302         retlw   0xe9
+00A5   3406           00303         retlw   0x06
+                      00304 
+00A6   3425           00305         retlw   0x25
+00A7   3445           00306         retlw   0x45
+00A8   3468           00307         retlw   0x68
+00A9   348C           00308         retlw   0x8c
+00AA   34B3           00309         retlw   0xb3
+00AB   34DC           00310         retlw   0xdc
+00AC   3408           00311         retlw   0x08
+00AD   3436           00312         retlw   0x36
+00AE   3467           00313         retlw   0x67
+00AF   349B           00314         retlw   0x9b
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00B0   34D2           00315         retlw   0xd2
+00B1   340C           00316         retlw   0x0c
+                      00317 
+00B2   3449           00318         retlw   0x49
+00B3   348B           00319         retlw   0x8b
+00B4   34D0           00320         retlw   0xd0
+00B5   3419           00321         retlw   0x19
+00B6   3467           00322         retlw   0x67
+00B7   34B9           00323         retlw   0xb9
+00B8   3410           00324         retlw   0x10
+00B9   346C           00325         retlw   0x6c
+00BA   34CE           00326         retlw   0xce
+00BB   3435           00327         retlw   0x35
+00BC   34A3           00328         retlw   0xa3
+00BD   3417           00329         retlw   0x17
+                      00330 
+00BE   3493           00331         retlw   0x93
+00BF   3415           00332         retlw   0x15
+00C0   349F           00333         retlw   0x9f
+00C1   3432           00334         retlw   0x32
+00C2   34CD           00335         retlw   0xcd
+00C3   3472           00336         retlw   0x72
+00C4   3420           00337         retlw   0x20
+00C5   34D8           00338         retlw   0xd8
+00C6   349C           00339         retlw   0x9c
+00C7   346B           00340         retlw   0x6b
+00C8   3446           00341         retlw   0x46
+00C9   342F           00342         retlw   0x2f
+                      00343 ;C4
+00CA   3425           00344         retlw   0x25
+00CB   342A           00345         retlw   0x2a
+00CC   343F           00346         retlw   0x3f
+00CD   3464           00347         retlw   0x64
+00CE   349A           00348         retlw   0x9a
+00CF   34E3           00349         retlw   0xe3
+00D0   343F           00350         retlw   0x3f
+00D1   3481           00351         retlw   0x81
+00D2   3438           00352         retlw   0x38
+00D3   34D6           00353         retlw   0xd6
+00D4   3480           00354         retlw   0x80
+00D5   345E           00355         retlw   0x5e
+                      00356 
+00D6   344B           00357         retlw   0x4b
+00D7   3455           00358         retlw   0x55
+00D8   347E           00359         retlw   0x7e
+00D9   34C8           00360         retlw   0xc8
+00DA   3434           00361         retlw   0x34
+00DB   34C6           00362         retlw   0xc6
+00DC   347F           00363         retlw   0x7f
+00DD   3461           00364         retlw   0x61
+00DE   346F           00365         retlw   0x6f
+00DF   34AC           00366         retlw   0xac
+00E0   341A           00367         retlw   0x1a
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00E1   34BC           00368         retlw   0xbc
+                      00369 
+00E2   3495           00370         retlw   0x95
+00E3   34A9           00371         retlw   0xa9
+00E4   34FC           00372         retlw   0xfc
+00E5   348F           00373         retlw   0x8f
+00E6   3469           00374         retlw   0x69
+00E7   348C           00375         retlw   0x8c
+00E8   34FE           00376         retlw   0xfe
+00E9   3402           00377         retlw   0x02
+00EA   34DF           00378         retlw   0xdf
+00EB   3458           00379         retlw   0x58
+00EC   3434           00380         retlw   0x34
+00ED   3478           00381         retlw   0x78
+                      00382 ;C6
+00EE   342B           00383         retlw   0x2b
+00EF   3453           00384         retlw   0x53
+00F0   34F7           00385         retlw   0xf7
+00F1   341F           00386         retlw   0x1f
+00F2   34D2           00387         retlw   0xd2
+00F3   3419           00388         retlw   0x19
+00F4   34FC           00389         retlw   0xfc
+00F5   3485           00390         retlw   0x85
+00F6   34BD           00391         retlw   0xbd
+00F7   34B0           00392         retlw   0xb0
+00F8   3467           00393         retlw   0x67
+                      00394 
+                      00395 
+00F9                  00396 Start:
+00F9   21E4           00397         call    InitPIC
+00FA   2202           00398         call    InitShiftRegister
+00FB   23E5           00399         call    LongDelay
+00FC   23E5           00400         call    LongDelay
+00FD   23E5           00401         call    LongDelay
+00FE   23E5           00402         call    LongDelay
+00FF   23E5           00403         call    LongDelay
+0100   23E5           00404         call    LongDelay
+0101   23E5           00405         call    LongDelay
+0102   23E5           00406         call    LongDelay
+                      00407 
+                      00408 
+0103   2172           00409         call    InitSID
+0104   23E5           00410         call    LongDelay
+0105   23E5           00411         call    LongDelay
+0106   23E5           00412         call    LongDelay
+0107   23E5           00413         call    LongDelay
+                      00414         
+0108   22A8           00415         call    ConfigI2C
+0109   2313           00416         call    SetupMCP
+                      00417 
+                      00418         
+                      00419 
+                      00420         
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00421 
+                      00422 ;       goto    FailMain
+010A   1283 1303      00423         banksel PORTA
+010C   1005           00424         bcf             PORTA, 0
+                      00425         
+                      00426 ;       goto $
+010D                  00427 MainLoop:
+010D   1283 1303      00428         banksel freqH
+010F   301C           00429         movlw   0x1c
+0110   00A2           00430         movwf   freqH
+0111   30D6           00431         movlw   0xd6
+0112   00A3           00432         movwf   freqL
+0113   21B4           00433         call    PlayNote
+0114   01A9           00434         clrf    note_index
+0115                  00435 Repeat:
+0115   1283 1303      00436         banksel freqH
+0117   19AA           00437         btfsc   flags, RX_BUFF_EMPTY
+0118   2915           00438         goto    Repeat
+0119   2276           00439         call    GetRxBuffer                                                             ; rx buffer not 
+                            empty so read it
+                      00440 
+                      00441 ;       goto    Repeat
+011A   00B0           00442         movwf   midi_byte       
+011B   30F0           00443         movlw   0xf0
+011C   05B0           00444         andwf   midi_byte, f
+011D   3090           00445         movlw   0x90
+011E   0230           00446         subwf   midi_byte, w
+011F   1D03           00447         btfss   STATUS, Z
+0120   2915           00448         goto    Repeat
+                      00449         
+0121   19AA           00450         btfsc   flags, RX_BUFF_EMPTY
+0122   2921           00451         goto    $-1
+0123   2276           00452         call    GetRxBuffer
+0124   00B1           00453         movwf   midi_data1
+                      00454         
+                      00455         
+                      00456         
+0125   0000           00457         nop
+0126   19AA           00458         btfsc   flags, RX_BUFF_EMPTY
+0127   2926           00459         goto    $-1
+0128   2276           00460         call    GetRxBuffer
+0129   00B2           00461         movwf   midi_data2
+012A   3000           00462         movlw   0x00
+012B   02B2           00463         subwf   midi_data2
+012C   1D03           00464         btfss   STATUS, Z
+012D   294C           00465         goto    NoteOn
+012E   21D7           00466         call    StopNote
+012F   2915           00467         goto    Repeat
+                      00468 
+                      00469 ; the following until NoteOn: works without interrupts. saving for later
+0130   1283 1303      00470         banksel PIR1
+0132   1E8C           00471         btfss   PIR1, RCIF
+0133   2932           00472         goto    $-1 
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0134   081A           00473         movf    RCREG, W
+0135   00B0           00474         movwf   midi_byte       
+0136   30F0           00475         movlw   0xf0
+0137   05B0           00476         andwf   midi_byte, f
+0138   3090           00477         movlw   0x90
+0139   0230           00478         subwf   midi_byte, w
+013A   1D03           00479         btfss   STATUS, Z
+013B   2915           00480         goto Repeat
+013C   1283 1303      00481         banksel PIR1
+013E   1E8C           00482         btfss   PIR1, RCIF
+013F   293E           00483         goto    $-1
+0140   081A           00484         movf    RCREG, W
+0141   00B1           00485         movwf   midi_data1
+0142   1E8C           00486         btfss   PIR1, RCIF
+0143   2942           00487         goto    $-1
+0144   081A           00488         movf    RCREG, w
+0145   00B2           00489         movwf   midi_data2
+0146   3000           00490         movlw   0x00
+0147   02B2           00491         subwf   midi_data2
+0148   1D03           00492         btfss   STATUS, Z
+0149   294C           00493         goto    NoteOn
+014A   21D7           00494         call    StopNote
+014B   2915           00495         goto    Repeat
+014C                  00496 NoteOn:
+014C   1283 1303      00497         banksel midi_data1
+014E   0831           00498         movf    midi_data1, w
+014F   2039           00499         call    HighFreqLookup
+0150   00A2           00500         movwf   freqH
+0151   0831           00501         movf    midi_data1, w
+0152   2099           00502         call    LowFreqLookup
+0153   00A3           00503         movwf   freqL
+0154   21B4           00504         call    PlayNote
+0155   0CB0           00505         rrf             midi_byte, f
+0156   0CB0           00506         rrf             midi_byte, f
+0157   0CB0           00507         rrf             midi_byte, f
+0158   0C30           00508         rrf             midi_byte, w
+0159   390F           00509         andlw   0x0f
+015A   0086           00510         movwf   PORTB
+015B   1283 1303      00511         banksel RCSTA
+015D   1C98           00512         btfss   RCSTA, OERR
+015E   2915           00513         goto    Repeat
+015F   1218           00514         bcf             RCSTA, CREN
+0160   23DE           00515         call    Delay1mS
+0161   1218           00516         bcf             RCSTA, CREN
+                      00517 
+                      00518         
+                      00519         
+                      00520 
+0162   2915           00521         goto Repeat
+                      00522 
+0163                  00523 FailMain:
+0163   1283 1303      00524         banksel PORTA
+0165   1005           00525         bcf             PORTA, 0
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0166   23E5           00526         call    LongDelay
+0167   23E5           00527         call    LongDelay
+0168   23E5           00528         call    LongDelay
+0169   23E5           00529         call    LongDelay
+016A   23E5           00530         call    LongDelay
+016B   1405           00531         bsf             PORTA, 0
+016C   23E5           00532         call    LongDelay
+016D   23E5           00533         call    LongDelay
+016E   23E5           00534         call    LongDelay
+016F   23E5           00535         call    LongDelay
+0170   23E5           00536         call    LongDelay
+0171   2963           00537         goto    FailMain
+                      00538 
+0172                  00539 InitSID:
+0172   1283 1303      00540         banksel sidaddress
+0174   2243           00541         call    ClearSID
+                      00542 
+0175   3073           00543         movlw   0x73
+0176   00A5           00544         movwf   attdec
+0177   30F2           00545         movlw   0xf2
+0178   3026           00546         movlw   susrel
+0179   2187           00547         call    InitVoice1
+017A   219C           00548         call    InitVoice2
+017B   21B3           00549         call    InitVoice3
+                      00550 
+                      00551         ; Set master volume to 15
+017C   1489           00552         bsf             PORTE, SIDRW                            ; SID read mode
+017D   23DE           00553         call    Delay1mS
+017E   23DE           00554         call    Delay1mS
+017F   3018           00555         movlw   .24
+0180   00A1           00556         movwf   sidaddress
+0181   2225           00557         call    AddressToOutputs
+0182   300F           00558         movlw   0x0f
+0183   0088           00559         movwf   PORTD
+0184   1089           00560         bcf             PORTE, SIDRW                            ; SID write mode
+0185   23DE           00561         call    Delay1mS
+                      00562 
+0186   0008           00563         return
+                      00564 
+0187                  00565 InitVoice1:
+                      00566         ; Set voice 1 Attack/Decay
+0187   1489           00567         bsf             PORTE, SIDRW                            ; SID read mode
+0188   23DE           00568         call    Delay1mS
+0189   23DE           00569         call    Delay1mS
+018A   3005           00570         movlw   .5
+018B   00A1           00571         movwf   sidaddress
+018C   2225           00572         call    AddressToOutputs
+018D   0825           00573         movf    attdec, w
+018E   0088           00574         movwf   PORTD
+018F   1089           00575         bcf             PORTE, SIDRW                            ; SID write mode
+0190   23DE           00576         call    Delay1mS
+                      00577 
+                      00578 ; Set voice 1 Sustain/Release
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0191   1489           00579         bsf             PORTE, SIDRW                            ; SID read mode
+0192   23DE           00580         call    Delay1mS
+0193   23DE           00581         call    Delay1mS
+0194   3006           00582         movlw   .6
+0195   00A1           00583         movwf   sidaddress
+0196   2225           00584         call    AddressToOutputs
+0197   0826           00585         movf    susrel, w
+0198   0088           00586         movwf   PORTD
+0199   1089           00587         bcf             PORTE, SIDRW                            ; SID write mode
+019A   23DE           00588         call    Delay1mS
+                      00589 
+019B   0008           00590         return
+                      00591 
+019C                  00592 InitVoice2:
+019C   1283 1303      00593         banksel PORTB
+                      00594 ; Set voice 2 Attack/Decay
+019E   1489           00595         bsf             PORTE, SIDRW                            ; SID read mode
+019F   23DE           00596         call    Delay1mS
+01A0   23DE           00597         call    Delay1mS
+01A1   300C           00598         movlw   .12
+01A2   00A1           00599         movwf   sidaddress
+01A3   2225           00600         call    AddressToOutputs
+01A4   0825           00601         movf    attdec, w
+01A5   0088           00602         movwf   PORTD
+01A6   1089           00603         bcf             PORTE, SIDRW                            ; SID write mode
+01A7   23DE           00604         call    Delay1mS
+                      00605 
+                      00606 ; Set voice 2 Sustain/Release
+01A8   1489           00607         bsf             PORTE, SIDRW                            ; SID read mode
+01A9   23DE           00608         call    Delay1mS
+01AA   23DE           00609         call    Delay1mS
+01AB   300D           00610         movlw   .13
+01AC   00A1           00611         movwf   sidaddress
+01AD   2225           00612         call    AddressToOutputs
+01AE   0826           00613         movf    susrel, w
+01AF   0088           00614         movwf   PORTD
+01B0   1089           00615         bcf             PORTE, SIDRW                            ; SID write mode
+01B1   23DE           00616         call    Delay1mS
+                      00617 
+01B2   0008           00618         return
+                      00619 
+01B3                  00620 InitVoice3:
+01B3   0008           00621         return
+                      00622 
+                      00623 ;MainLoop:
+                      00624 ;       incf    address
+                      00625 ;       call    AddressToOutputs
+                      00626 ;       call    Delay1mS
+                      00627 
+                      00628 
+                      00629 
+01B4                  00630 PlayNote:
+01B4   1283 1303      00631         banksel PORTB
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00632 ; voice 1
+01B6   1489           00633         bsf             PORTE, SIDRW                    ;  SID read mode
+01B7   23DE           00634         call    Delay1mS
+01B8   23DE           00635         call    Delay1mS
+01B9   1283 1303      00636         banksel sidaddress
+01BB   3001           00637         movlw   .1
+01BC   00A1           00638         movwf   sidaddress
+01BD   2225           00639         call    AddressToOutputs
+01BE   0822           00640         movf    freqH, w
+01BF   0088           00641         movwf   PORTD
+01C0   1089           00642         bcf             PORTE, SIDRW                    ;  SID write mode
+01C1   23DE           00643         call    Delay1mS
+                      00644 
+01C2   1489           00645         bsf             PORTE, SIDRW                    ;  SID read mode
+01C3   23DE           00646         call    Delay1mS
+01C4   23DE           00647         call    Delay1mS
+01C5   3000           00648         movlw   .0
+01C6   00A1           00649         movwf   sidaddress
+01C7   2225           00650         call    AddressToOutputs
+01C8   0823           00651         movf    freqL, w
+01C9   0088           00652         movwf   PORTD
+01CA   1089           00653         bcf             PORTE, SIDRW                    ;  SID write mode
+01CB   23DE           00654         call    Delay1mS
+                      00655 
+                      00656 ;  Set waveform and gate
+01CC   1489           00657         bsf             PORTE, SIDRW                    ;  SID read mode
+01CD   23DE           00658         call    Delay1mS
+01CE   23DE           00659         call    Delay1mS
+01CF   3004           00660         movlw   .4
+01D0   00A1           00661         movwf   sidaddress
+01D1   2225           00662         call    AddressToOutputs
+01D2   3021           00663         movlw   b'00100001'
+01D3   0088           00664         movwf   PORTD
+01D4   1089           00665         bcf             PORTE, SIDRW                    ;  SID write mode
+01D5   23DE           00666         call    Delay1mS
+01D6   0008           00667         return
+                      00668 
+01D7                  00669 StopNote:
+01D7   1283 1303      00670         banksel PORTB
+01D9   1489           00671         bsf             PORTE, SIDRW                    ;  SID read mode
+01DA   23DE           00672         call    Delay1mS
+01DB   23DE           00673         call    Delay1mS
+01DC   3004           00674         movlw   .4
+01DD   00A1           00675         movwf   sidaddress
+01DE   2225           00676         call    AddressToOutputs
+01DF   08C0           00677         movf    b'01000000'
+01E0   0088           00678         movwf   PORTD
+01E1   1089           00679         bcf             PORTE, SIDRW                    ;  SID write mode
+01E2   23DE           00680         call    Delay1mS
+                      00681 
+01E3   0008           00682         return
+                      00683 
+01E4                  00684 InitPIC:
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00685 
+01E4   1683 1303      00686         banksel OSCCON
+01E6   3067           00687         movlw   b'01100111'
+01E7   008F           00688         movwf   OSCCON                                  ; Oscillator set to 4 MHz
+                      00689 
+01E8   1683 1303      00690         banksel OPTION_REG
+01EA   1281           00691         bcf             OPTION_REG, T0CS
+01EB   1101           00692         bcf             OPTION_REG, PS2
+01EC   1081           00693         bcf             OPTION_REG, PS1
+01ED   1001           00694         bcf             OPTION_REG, PS0
+                      00695 
+                      00696         ;bcf            PIE2, EEIE
+                      00697 
+01EE   1683 1303      00698         banksel TRISA
+01F0   3008           00699         movlw   b'00001000'
+01F1   0085           00700         movwf   TRISA
+01F2   0186           00701         clrf    TRISB
+01F3   3098           00702         movlw   b'10011000'
+01F4   0087           00703         movwf   TRISC
+01F5   0188           00704         clrf    TRISD
+01F6   0189           00705         clrf    TRISE
+                      00706 
+01F7   1683 1703      00707         banksel ANSEL
+01F9   0188           00708         clrf    ANSEL
+01FA   0189           00709         clrf    ANSELH
+                      00710 
+01FB   1283 1303      00711         banksel PORTA
+01FD   1005           00712         bcf             PORTA, 0
+                      00713 
+01FE   2254           00714         call    InitRxBuffer
+01FF   2294           00715         call    EnableMIDI
+                      00716 
+0200   23E5           00717         call    LongDelay
+0201   0008           00718         return
+                      00719 
+                      00720 
+                      00721 
+0202                  00722 InitShiftRegister:
+0202   1283 1303      00723         banksel PORTB
+0204   1007           00724         bcf             PORTC, SRCLK
+0205   1087           00725         bcf             PORTC, RCLK
+0206   1287           00726         bcf             PORTC, SER
+0207   221F           00727         call    ClearRegister
+0208   0008           00728         return
+                      00729 
+0209                  00730 SetSerialHigh:
+0209   1283 1303      00731         banksel PORTB
+020B   1687           00732         bsf             PORTC, SER
+020C   0000           00733         nop
+020D   1407           00734         bsf             PORTC, SRCLK
+020E   0000           00735         nop
+020F   1007           00736         bcf             PORTC, SRCLK
+0210   0008           00737         return
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00738 
+0211                  00739 SetSerialLow:
+0211   1283 1303      00740         banksel PORTB
+0213   1287           00741         bcf             PORTC, SER
+0214   0000           00742         nop
+0215   1407           00743         bsf             PORTC, SRCLK
+0216   0000           00744         nop
+0217   1007           00745         bcf             PORTC, SRCLK
+0218   0008           00746         return
+                      00747 
+0219                  00748 SetOutputs:
+0219   1283 1303      00749         banksel PORTA
+021B   1487           00750         bsf     PORTC, RCLK
+021C   0000           00751         nop
+021D   1087           00752         BCF     PORTC, RCLK
+021E   0008           00753         return
+                      00754 
+021F                  00755 ClearRegister:
+021F   1283 1303      00756         banksel PORTA
+0221   1005           00757         bcf     PORTA, SRCLR
+0222   0000           00758         nop
+0223   1405           00759         BSF     PORTA, SRCLR
+0224   0008           00760         return
+                      00761 
+                      00762 ;called with value to be written in 'address'
+0225                  00763 AddressToOutputs:
+0225   221F           00764         call    ClearRegister
+0226   1283 1303      00765         banksel PORTB
+0228   1287           00766         bcf             PORTC, SER
+0229   1821           00767         btfsc   sidaddress, 0
+022A   2209           00768         call    SetSerialHigh
+022B   1C21           00769         btfss   sidaddress, 0
+022C   2211           00770         call    SetSerialLow
+022D   1287           00771         bcf             PORTC, SER
+022E   18A1           00772         btfsc   sidaddress, 1
+022F   2209           00773         call    SetSerialHigh
+0230   1CA1           00774         btfss   sidaddress, 1
+0231   2211           00775         call    SetSerialLow
+0232   1287           00776         bcf             PORTC, SER
+0233   1921           00777         btfsc   sidaddress, 2
+0234   2209           00778         call    SetSerialHigh
+0235   1D21           00779         btfss   sidaddress, 2
+0236   2211           00780         call    SetSerialLow
+0237   1287           00781         bcf             PORTC, SER
+0238   19A1           00782         btfsc   sidaddress, 3
+0239   2209           00783         call    SetSerialHigh
+023A   1DA1           00784         btfss   sidaddress, 3
+023B   2211           00785         call    SetSerialLow
+023C   1287           00786         bcf             PORTC, SER
+023D   1A21           00787         btfsc   sidaddress, 4
+023E   2209           00788         call    SetSerialHigh
+023F   1E21           00789         btfss   sidaddress, 4
+0240   2211           00790         call    SetSerialLow
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00791 ;       bcf             PORTC, SER
+                      00792 ;       btfsc   address, 5
+                      00793 ;       call    SetSerialHigh
+                      00794 ;       btfss   address, 5
+                      00795 ;       call    SetSerialLow
+                      00796         
+0241   2219           00797         call    SetOutputs
+                      00798 
+                      00799 ;       call    LongDelay
+                      00800 ;       call    LongDelay
+                      00801 
+0242   0008           00802         return
+                      00803 
+                      00804 
+                      00805         
+                      00806 
+0243                  00807 ClearSID:
+0243   1283 1303      00808         banksel PORTA
+0245   3000           00809         movlw   0x00
+0246   00A1           00810         movwf   sidaddress                                      ; Set address to 0 for clear
+0247                  00811 ClearSIDLoop:   
+0247   1489           00812         bsf             PORTE, SIDRW                    ; R/~W set for read
+0248   23DE           00813         call    Delay1mS                                ; wait to avoid garbage
+0249   23DE           00814         call    Delay1mS
+024A   2225           00815         call    AddressToOutputs                ; set Address on SID A0-A4
+024B   0188           00816         clrf    PORTD                                   ; clear SID data D0-D7
+024C   1089           00817         bcf             PORTE, SIDRW                    ; SID write mode
+024D   23DE           00818         call    Delay1mS
+024E   0AA1           00819         incf    sidaddress
+024F   3019           00820         movlw   .25
+0250   0221           00821         subwf   sidaddress, w
+0251   1D03           00822         btfss   STATUS, Z                               ;  if address bit 5 set, add = 32 so exit
+0252   2A47           00823         goto    ClearSIDLoop
+0253   0008           00824         return
+                      00825 
+0254                  00826 InitRxBuffer:
+0254   1283           00827         bcf             STATUS, RP0
+0255   1303           00828         bcf             STATUS, RP1                             ; Bank 0
+0256   30A0           00829         movlw   LOW rx_buffer                   ; Get RxBuffer address
+0257   00AB           00830         movwf   rx_start_ptr                            ; Put in Rx Start Ptr
+0258   00AC           00831         movwf   rx_end_ptr                              ; Also put in Rx End Ptr
+0259   112A           00832         bcf             flags, RX_BUFF_FULL             ; Clear Rx buffer full flag
+025A   15AA           00833         bsf             flags, RX_BUFF_EMPTY            ; Clear Rx buffer empty flag
+025B   0008           00834         return
+                      00835 
+                      00836 ; Store data received on the RX buffer
+025C                  00837 PutRxBuffer:
+025C   1283           00838         bcf             STATUS, RP0
+025D   1303           00839         bcf             STATUS, RP1
+025E   192A           00840         btfsc   flags, RX_BUFF_FULL
+025F   2A75           00841         goto    RxBuffFullErr
+0260   00AF           00842         movwf   buffer_data                             ; store for later
+0261   1FAF           00843         btfss   buffer_data, 7                  ; test if status command
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0262   2A65           00844         goto    StoreData                               ; not set, is not status command
+0263   00AF           00845         movwf   buffer_data                     ; store back in w 
+0264   00B3           00846         movwf   prev_command                    ; store as previous command for use later
+0265                  00847 StoreData:
+0265   1383           00848         bankisel        rx_buffer
+0266   082C           00849         movf    rx_end_ptr, w
+0267   0084           00850         movwf   FSR
+0268   082F           00851         movf    buffer_data, w
+0269   0080           00852         movwf   INDF
+                      00853 
+                      00854 ;  test for wrap around
+026A   30AF           00855         movlw   LOW rx_buffer + RX_BUFF_LEN - 1 ; find end of buffer
+026B   062C           00856         xorwf   rx_end_ptr, w
+026C   30A0           00857         movlw   LOW rx_buffer
+026D   1D03           00858         btfss   STATUS, Z
+026E   0A2C           00859         incf    rx_end_ptr, w
+026F   00AC           00860         movwf   rx_end_ptr
+                      00861 
+                      00862 ; Test if buffer is full
+0270   022B           00863         subwf   rx_start_ptr, w
+0271   1903           00864         btfsc   STATUS, Z
+0272   152A           00865         bsf             flags, RX_BUFF_FULL
+0273   11AA           00866         bcf             flags, RX_BUFF_EMPTY
+0274   0008           00867         return
+                      00868 
+0275                  00869 RxBuffFullErr:
+0275   0008           00870         return
+                      00871 
+                      00872 ; Get data from the receive buffer
+0276                  00873 GetRxBuffer:
+0276   1283           00874         bcf             STATUS, RP0
+0277   1303           00875         bcf             STATUS, RP1                             ; Bank 0
+0278   19AA           00876         btfsc   flags, RX_BUFF_EMPTY    ; Is the Receive buffer empty?
+0279   2A8F           00877         goto    RxBuffEmptyErr                  ; Handle it if so
+                      00878         
+027A   1683           00879         bsf             STATUS, RP0                             ; Bank 1
+027B   128C           00880         bcf             PIE1, RCIE                              ; Disable Rx interrupts
+027C   1283           00881         bcf             STATUS, RP0                             ; Bank 0
+                      00882         
+027D   1383           00883         BANKISEL        rx_buffer                       ; Set bit for Bank indirect addressing
+027E   082B           00884         movf    rx_start_ptr, W                 ; Get the start pointer
+027F   0084           00885         movwf   FSR                                             ; Put into FSR
+                      00886 
+                      00887 ; test for buffer pointer wraparound
+0280   30AF           00888         movlw   LOW rx_buffer + RX_BUFF_LEN - 1 ; Get last address of the buffer
+0281   062B           00889         xorwf   rx_start_ptr, W                 ; Compare with StartPointer
+0282   30A0           00890         movlw   LOW rx_buffer                   ; Load first address of the buffer
+0283   1D03           00891         btfss   STATUS, Z                               ; Is it at the last address?
+0284   0A2B           00892         incf    rx_start_ptr, W                 ; No, then increment it
+0285   00AB           00893         movwf   rx_start_ptr                            ; Store the new value
+0286   112A           00894         bcf             flags, RX_BUFF_FULL             ; Buffer mustn't be full
+                      00895 
+                      00896 ; Test if buffer is empty
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0287   062C           00897         xorwf   rx_end_ptr, W                           ; Compare Start to End
+0288   1903           00898         btfsc   STATUS, Z                               ; Is it the same?
+0289   15AA           00899         bsf             flags, RX_BUFF_EMPTY    ; If the same, the buffer is empty
+028A   0800           00900         movf    INDF, W                                 ; get the data from the buffer (indirectly)
+                      00901 ;       movwf   tobereturned
+028B   1683           00902         bsf             STATUS, RP0                             ; Bank 1
+028C   168C           00903         bsf             PIE1, RCIE                              ; Turn interrupts back on
+028D   1283           00904         bcf             STATUS, RP0                             ; Bank 0
+028E   0008           00905         return                                                  ; return with databyte in w
+                      00906 
+                      00907 ; Simply return zero if buffer is empty
+028F                  00908 RxBuffEmptyErr:
+028F   1683           00909         bsf             STATUS, RP0
+0290   1303           00910         bcf             STATUS, RP1                             ; Bank 1
+0291   168C           00911         bsf             PIE1, RCIE                              ; Enable Rx interrupts
+0292   1283           00912         bcf             STATUS, RP0                             ; Bank 0
+0293   3400           00913         retlw   0 
+                      00914 
+                      00915 ; MIDI init
+0294                  00916 EnableMIDI:
+0294   1683 1703      00917         banksel ANSEL
+0296   0188           00918         clrf    ANSEL
+0297   0189           00919         clrf    ANSELH
+                      00920 
+0298   1683 1303      00921         banksel SPBRGH
+029A   3000           00922         movlw   0x00
+029B   009A           00923         movwf   SPBRGH
+029C   3001           00924         movlw   0x01                            ;  Use for 4MHz system clock
+                      00925 ;       movlw   0x0f                            ;  Use for 8MHz system clock
+029D   0099           00926         movwf   SPBRG
+                      00927 ;       bsf             TXSTA, BRGH
+                      00928 ;       bcf             BAUDCTL, BRG16                  ; Set for 31250 baud
+029E   1218           00929         bcf             TXSTA, SYNC                             ; Asynchronous
+029F   168C           00930         bsf             PIE1, RCIE                              ; Receive Interrupt enable
+02A0   178B           00931         bsf             INTCON, GIE                             ; Global Interrupt enable
+02A1   170B           00932         bsf             INTCON, PEIE                    ; Peripheral Interrupt enable
+                      00933 
+                      00934 ;       banksel RCSTA                                   ; Page 0
+                      00935 ;       bsf             RCSTA, SPEN                             ; Enable Serial Port
+                      00936 ;       bsf             RCSTA, CREN                             ; Enable Receive
+                      00937 ;       bcf             STATUS, RP0                             ; return to page 0 (just in case)
+                      00938 ; old is commented above
+                      00939 ; "new" is below
+02A2   1218           00940         bcf             TXSTA, SYNC
+02A3   1283 1303      00941         banksel RCSTA
+02A5   1798           00942         bsf             RCSTA, SPEN
+02A6   1618           00943         bsf             RCSTA, CREN
+02A7   0008           00944         return
+                      00945 
+02A8                  00946 ConfigI2C:
+02A8   1283 1303      00947         banksel SSPCON
+                      00948 
+                      00949 ; Enables MSSP and uses
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00950 ; PORTC pins for I2C mode
+                      00951 ; (SSPEN set) AND
+                      00952 ; Enables I2C Master Mode
+                      00953 ; (SSPMx bits)
+02AA   3028           00954         movlw   b'00101000'
+02AB   0094           00955         movwf   SSPCON
+                      00956 
+                      00957 ; Input Levels and slew reate as I2C Standard Levels
+02AC   1683 1303      00958         BANKSEL SSPSTAT
+02AE   3080           00959         movlw   b'10000000'                     ; Slew Rate control (SMP) 100kHz
+02AF   0094           00960         movwf   SSPSTAT                         ; mode and input levels are I2C
+                      00961                                                                 ; loaded into SSPSTAT
+                      00962 
+                      00963 ; Configure Baud Rate
+02B0   1683 1303      00964         banksel SSPADD
+02B2   3009           00965         movlw(FOSC / (4 * BAUD))-1      ; Calculate SSPADD
+02B3   0093           00966         movwf   SSPADD                          ; Set rate and setup SSPADD
+                      00967 
+02B4   0008           00968         return
+                      00969 
+                      00970 
+02B5                  00971 I2CWriteSingle:
+02B5   1283 1303      00972         banksel PORTA
+02B7   1405           00973         bsf             PORTA, 0
+                      00974 ; Send START and wait for it to complete
+02B8   1683 1303      00975         banksel SSPCON2
+02BA   1411           00976         bsf             SSPCON2, SEN
+02BB   230D           00977         call    WaitMSSP
+                      00978 
+                      00979 ; Send and Check CONTROL byte, wait for it to complete
+02BC   0870           00980         movf    control_byte, w         ; Load for input
+02BD   2309           00981         call    Send_I2C_Byte           ; send byte
+02BE   230D           00982         call    WaitMSSP                        ; Wait for I2C operation
+                      00983 ;return
+02BF   1683 1303      00984         banksel SSPCON2
+02C1   1B11           00985         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02C2   2B04           00986         goto    I2CFail                         ; failed, skipped if successful
+                      00987 
+                      00988 
+                      00989 ; Send and Check ADDRESS byte wait for it to complte
+02C3   0871           00990         movf    address, w                      ; Load Address Byte
+02C4   2309           00991         call    Send_I2C_Byte           ; Send byte
+02C5   230D           00992         call    WaitMSSP                        ; Wait for I2C operation
+                      00993 
+02C6   1683 1303      00994         banksel SSPCON2
+02C8   1B11           00995         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02C9   2B04           00996         goto    I2CFail                         ; failed, skipped if successful
+                      00997 
+                      00998 ; Send and Check DATA byte wait for it to complete
+02CA   0872           00999         movf    data_byte, w            ; Load the data byte
+02CB   2309           01000         call    Send_I2C_Byte           ; Send byte
+02CC   230D           01001         call    WaitMSSP                        ; Wait for I2C operation
+                      01002 
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+02CD   1683 1303      01003         banksel SSPCON2
+02CF   1B11           01004         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02D0   2B04           01005         goto    I2CFail                         ; failed, skipped if successful
+                      01006 
+                      01007 ; Send and Check the STOP condition, wait for it to complete
+02D1   1683 1303      01008         banksel SSPCON2
+02D3   1511           01009         bsf             SSPCON2, PEN            ; Send STOP (P) condition
+02D4   230D           01010         call    WaitMSSP                        ; Wait for I2C operation
+                      01011 
+02D5   1283 1303      01012         banksel PORTA
+02D7   1005           01013         bcf             PORTA, 0
+                      01014 ; The WRITE has successfully completed
+02D8   0008           01015         return
+                      01016 
+02D9                  01017 I2CWriteWord:
+02D9   1283 1303      01018         banksel PORTA
+02DB   1405           01019         bsf             PORTA, 0
+                      01020 ; Send START and wait for it to complete
+02DC   1683 1303      01021         banksel SSPCON2
+02DE   1411           01022         bsf             SSPCON2, SEN
+02DF   230D           01023         call    WaitMSSP
+                      01024 
+                      01025 ; Send and Check CONTROL byte, wait for it to complete
+02E0   0870           01026         movf    control_byte, w         ; Load for input
+02E1   2309           01027         call    Send_I2C_Byte           ; send byte
+02E2   230D           01028         call    WaitMSSP                        ; Wait for I2C operation
+                      01029 ;return
+02E3   1683 1303      01030         banksel SSPCON2
+02E5   1B11           01031         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02E6   2B04           01032         goto    I2CFail                         ; failed, skipped if successful
+                      01033 
+                      01034 
+                      01035 ; Send and Check ADDRESS byte wait for it to complte
+02E7   0871           01036         movf    address, w                      ; Load Address Byte
+02E8   2309           01037         call    Send_I2C_Byte           ; Send byte
+02E9   230D           01038         call    WaitMSSP                        ; Wait for I2C operation
+                      01039 
+02EA   1683 1303      01040         banksel SSPCON2
+02EC   1B11           01041         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02ED   2B04           01042         goto    I2CFail                         ; failed, skipped if successful
+                      01043 
+                      01044 ; Send and Check DATA byte wait for it to complete
+02EE   0874           01045         movf    data_low, w             ; Load the data byte
+02EF   2309           01046         call    Send_I2C_Byte           ; Send byte
+02F0   230D           01047         call    WaitMSSP                        ; Wait for I2C operation
+                      01048 
+02F1   1683 1303      01049         banksel SSPCON2
+02F3   1B11           01050         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02F4   2B04           01051         goto    I2CFail                         ; failed, skipped if successful
+                      01052 
+                      01053 ; Send and Check DATA byte wait for it to complete
+02F5   0873           01054         movf    data_high, w            ; Load the data byte
+02F6   2309           01055         call    Send_I2C_Byte           ; Send byte
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+02F7   230D           01056         call    WaitMSSP                        ; Wait for I2C operation
+                      01057 
+02F8   1683 1303      01058         banksel SSPCON2
+02FA   1B11           01059         btfsc   SSPCON2, ACKSTAT        ; check ACK bit
+02FB   2B04           01060         goto    I2CFail                         ; failed, skipped if successful
+                      01061 
+                      01062 ; Send and Check the STOP condition, wait for it to complete
+02FC   1683 1303      01063         banksel SSPCON2
+02FE   1511           01064         bsf             SSPCON2, PEN            ; Send STOP (P) condition
+02FF   230D           01065         call    WaitMSSP                        ; Wait for I2C operation
+                      01066 
+0300   1283 1303      01067         banksel PORTA
+0302   1005           01068         bcf             PORTA, 0
+                      01069 ; The WRITE has successfully completed
+0303   0008           01070         return
+                      01071 
+                      01072 
+                      01073 ; *** SUBROUTINES & ERROR HANDLERS ***;
+                      01074 ; I2C Operation Failed code sequence -This will normally not
+                      01075 ; happen, but if it does, a STOP is sent and the entire code
+                      01076 ; is tried again
+0304                  01077 I2CFail:
+0304   1683 1303      01078         banksel SSPCON2
+0306   1511           01079         bsf             SSPCON2, PEN
+0307   230D           01080         call    WaitMSSP
+                      01081         
+                      01082 ;       banksel PORTA
+                      01083 ;       bsf             PORTA, 0
+                      01084 ;       return  
+0308   2963           01085         goto    FailMain
+                      01086 
+                      01087 ; This routine sends the W register to SSPBUF, thus
+                      01088 ; transmitting a byte.  The SSPIF flag is checked to ensure
+                      01089 ; the byte has been sent.  On completion, the routine exits
+0309                  01090 Send_I2C_Byte:
+0309   1283 1303      01091         banksel SSPBUF
+030B   0093           01092         movwf   SSPBUF                          ; Put value into SSPBUF, sent automatically
+030C   3400           01093         retlw   0                                       ; Done, return 0
+                      01094 
+                      01095 ; This routine waits for the last I2C operation to complete.
+                      01096 ; It does this by polling the SSPIF flag in PIR1.
+030D                  01097 WaitMSSP:
+030D   1283 1303      01098         banksel PIR1
+030F   1D8C           01099         btfss   PIR1, SSPIF                     ; I2C done?
+0310   2B0F           01100         goto    $-1                                     ; if clear, loop back
+0311   118C           01101         bcf             PIR1, SSPIF                     ; I2C ready, clear the flag
+0312   3400           01102         retlw   0                                       ; Return 0
+                      01103 
+                      01104 
+0313                  01105 SetupMCP:
+0313   1683 1303      01106         banksel control_byte
+0315   3040           01107         movlw   MCP_WRITE
+0316   00F0           01108         movwf   control_byte
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 22
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0317   300A           01109         movlw   0x0a
+0318   00F1           01110         movwf   address
+0319   3010           01111         movlw   b'00010000'
+031A   00F2           01112         movwf   data_byte
+031B   22B5           01113         call    I2CWriteSingle
+                      01114 
+                      01115 ; Port A and B to Output
+031C   3040           01116         movlw   MCP_WRITE
+031D   00F0           01117         movwf   control_byte
+031E   3000           01118         movlw   0x00
+031F   00F1           01119         movwf   address
+0320   3000           01120         movlw   0x00
+0321   00F2           01121         movwf   data_byte
+0322   22B5           01122         call    I2CWriteSingle
+                      01123 
+0323   3040           01124         movlw   MCP_WRITE
+0324   00F0           01125         movwf   control_byte
+0325   3001           01126         movlw   0x01
+0326   00F1           01127         movwf   address
+0327   3000           01128         movlw   0x00
+0328   00F2           01129         movwf   data_byte
+0329   22B5           01130         call    I2CWriteSingle
+                      01131 
+032A   3040           01132         movlw   MCP_WRITE
+032B   00F0           01133         movwf   control_byte
+032C   3000           01134         movlw   b'00000000'
+032D   00F4           01135         movwf   data_low
+032E   3000           01136         movlw   b'00000000'
+032F   00F3           01137         movwf   data_high
+0330   22D9           01138         call    I2CWriteWord
+                      01139 
+                      01140 ;       goto    FailMain
+                      01141         
+0331                  01142 Hello:
+0331   3040           01143         movlw   MCP_WRITE
+0332   00F0           01144         movwf   control_byte
+0333   3012           01145         movlw   0x12
+0334   00F1           01146         movwf   address
+0335   3038           01147         movlw   b'00111000'
+0336   00F4           01148         movwf   data_low
+0337   3002           01149         movlw   b'00000010'
+0338   00F3           01150         movwf   data_high
+0339   22D9           01151         call    I2CWriteWord
+033A   23DE           01152         call    Delay1mS
+033B   3040           01153         movlw   MCP_WRITE
+033C   00F0           01154         movwf   control_byte
+033D   3013           01155         movlw   0x13
+033E   00F1           01156         movwf   address
+033F   3000           01157         movlw   b'00000000'
+0340   22B5           01158         call    I2CWriteSingle
+                      01159 
+                      01160 
+                      01161 
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 23
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      01162 ;turn on Display
+0341   3040           01163         movlw   MCP_WRITE
+0342   00F0           01164         movwf   control_byte
+0343   3012           01165         movlw   0x12
+0344   00F1           01166         movwf   address
+0345   300D           01167         movlw   b'00001101'
+0346   00F4           01168         movwf   data_low
+0347   3002           01169         movlw   b'00000010'
+0348   00F3           01170         movwf   data_high
+0349   22D9           01171         call    I2CWriteWord
+034A   23DE           01172         call    Delay1mS
+034B   3040           01173         movlw   MCP_WRITE
+034C   00F0           01174         movwf   control_byte
+034D   3013           01175         movlw   0x13
+034E   00F1           01176         movwf   address
+034F   3000           01177         movlw   b'00000000'
+0350   22B5           01178         call    I2CWriteSingle
+                      01179 
+                      01180 ; increment mode and shift cursor to top left
+0351   3040           01181         movlw   MCP_WRITE
+0352   00F0           01182         movwf   control_byte
+0353   3012           01183         movlw   0x12
+0354   00F1           01184         movwf   address
+0355   3006           01185         movlw   b'00000110'
+0356   00F4           01186         movwf   data_low
+0357   3002           01187         movlw   b'00000010'
+0358   00F3           01188         movwf   data_high
+0359   22D9           01189         call    I2CWriteWord
+035A   23DE           01190         call    Delay1mS
+035B   3040           01191         movlw   MCP_WRITE
+035C   00F0           01192         movwf   control_byte
+035D   3013           01193         movlw   0x13
+035E   00F1           01194         movwf   address
+035F   3000           01195         movlw   b'00000000'
+0360   22B5           01196         call    I2CWriteSingle
+                      01197 
+                      01198 ;  clear and set cursor at home
+0361   3040           01199         movlw   MCP_WRITE
+0362   00F0           01200         movwf   control_byte
+0363   3012           01201         movlw   0x12
+0364   00F1           01202         movwf   address
+0365   3001           01203         movlw   b'00000001'
+0366   00F4           01204         movwf   data_low
+0367   3002           01205         movlw   b'00000010'
+0368   00F3           01206         movwf   data_high
+0369   22D9           01207         call    I2CWriteWord
+036A   23DE           01208         call    Delay1mS
+036B   3040           01209         movlw   MCP_WRITE
+036C   00F0           01210         movwf   control_byte
+036D   3013           01211         movlw   0x13
+036E   00F1           01212         movwf   address
+036F   3000           01213         movlw   b'00000000'
+0370   22B5           01214         call    I2CWriteSingle
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 24
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      01215 
+0371   3040           01216         movlw   MCP_WRITE
+0372   00F0           01217         movwf   control_byte
+0373   3012           01218         movlw   0x12
+0374   00F1           01219         movwf   address
+0375   3002           01220         movlw   b'00000010'
+0376   00F4           01221         movwf   data_low
+0377   3002           01222         movlw   b'00000010'
+0378   00F3           01223         movwf   data_high
+0379   22D9           01224         call    I2CWriteWord
+037A   23DE           01225         call    Delay1mS
+037B   3040           01226         movlw   MCP_WRITE
+037C   00F0           01227         movwf   control_byte
+037D   3013           01228         movlw   0x13
+037E   00F1           01229         movwf   address
+037F   3000           01230         movlw   b'00000000'
+0380   22B5           01231         call    I2CWriteSingle
+0381   0008           01232         return
+                      01233 
+                      01234 
+0382                  01235 WriteCharacter:
+0382   00F4           01236         movwf   data_low
+0383   3040           01237         movlw   MCP_WRITE
+0384   00F0           01238         movwf   control_byte
+0385   3012           01239         movlw   0x12
+0386   00F1           01240         movwf   address
+0387   3003           01241         movlw   b'00000011'
+0388   00F3           01242         movwf   data_high
+0389   22D9           01243         call    I2CWriteWord
+038A   23DE           01244         call    Delay1mS
+038B   3040           01245         movlw   MCP_WRITE
+038C   00F0           01246         movwf   control_byte
+038D   3013           01247         movlw   0x13
+038E   00F1           01248         movwf   address
+038F   3000           01249         movlw   b'00000000'
+0390   22B5           01250         call    I2CWriteSingle
+0391   0008           01251         return
+                      01252 
+0392                  01253 SetCursor:
+0392   3080           01254         movlw   0x80
+0393   07F8           01255         addwf   column, f
+0394   3040           01256         movlw   0x40                                    ;  2nd row starting position
+0395   1877           01257         btfsc   row, 0                          ;  test if row = b'00000001'
+0396   07F8           01258         addwf   column, f
+                      01259                                                                 ; at this line, column contains the posi
+                            tion for the character
+                      01260                                                                 ; adjusted for the proper row   
+0397   3080           01261         movlw   0x80
+0398   3040           01262         movlw   MCP_WRITE
+0399   00F0           01263         movwf   control_byte
+039A   3012           01264         movlw   0x12
+039B   00F1           01265         movwf   address
+039C   0878           01266         movf    column, w
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 25
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+039D   00F4           01267         movwf   data_low
+039E   3002           01268         movlw   b'00000010'
+039F   00F3           01269         movwf   data_high
+03A0   22D9           01270         call    I2CWriteWord
+03A1   23DE           01271         call    Delay1mS
+03A2   3040           01272         movlw   MCP_WRITE
+03A3   00F0           01273         movwf   control_byte
+03A4   3013           01274         movlw   0x13
+03A5   00F1           01275         movwf   address
+03A6   3000           01276         movlw   b'00000000'
+03A7   22B5           01277         call    I2CWriteSingle
+03A8   0008           01278         return
+                      01279 
+03A9                  01280 WriteDecimalAsASCII:
+03A9   00B7           01281         movwf   num_value
+03AA   23B6           01282         call    GetDigits
+03AB   3030           01283         movlw   .48
+03AC   02B6           01284         subwf   digit_c
+03AD   1903           01285         btfsc   STATUS, Z
+03AE   2BB1           01286         goto    WriteB
+03AF   0836           01287         movf    digit_c, w
+03B0   2382           01288         call    WriteCharacter
+03B1                  01289 WriteB:
+03B1   0835           01290         movf    digit_b, w
+03B2   2382           01291         call    WriteCharacter
+03B3   0834           01292         movf    digit_a, w
+03B4   2382           01293         call    WriteCharacter
+03B5   0008           01294         return
+                      01295 
+03B6                  01296 GetDigits:
+03B6   1283 1303      01297         banksel digit_a
+03B8   3000           01298         movlw   0x00                            ; clear all digits
+03B9   00B4           01299         movwf   digit_a
+03BA   00B5           01300         movwf   digit_b
+03BB   00B6           01301         movwf   digit_c
+03BC   0837           01302         movf    num_value, w
+03BD   00B8           01303         movwf   temp_value
+                      01304 
+03BE                  01305 Test:
+03BE   0838           01306         movf    temp_value, w
+03BF   00B9           01307         movwf   prev_value
+03C0   3064           01308         movlw   .100
+03C1   02B8           01309         subwf   temp_value, 1
+03C2   1C03           01310         btfss   STATUS, C
+03C3   2BC8           01311         goto    NextDigit                               ;  brach if patch <= 100
+03C4   0AB6           01312         incf    digit_c                 ;  we have found that the answer was =>100
+03C5   1D03           01313         btfss   STATUS, Z
+03C6   2BBE           01314         goto    Test
+                      01315         
+03C7   2BD9           01316         goto    AdjustASCII
+03C8                  01317 NextDigit:                                      ; the patch now is < 100, so process the same..
+                      01318                                                         ; yeah, redundant code, but my assembly is rusty
+03C8   0839           01319         movf    prev_value, 0
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 26
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+03C9   00B8           01320         movwf   temp_value
+03CA                  01321 TestFor10s:
+03CA   0838           01322         movf    temp_value, 0
+03CB   00B9           01323         movwf   prev_value
+03CC   300A           01324         movlw   .10
+03CD   02B8           01325         subwf   temp_value, 1
+03CE   1C03           01326         btfss   STATUS, C
+03CF   2BD7           01327         goto    LastDigit                               ;  brach if patch <= 10
+03D0   0AB5           01328         incf    digit_b         ;  we have found that the answer was =>10
+03D1   1D03           01329         btfss   STATUS, Z
+03D2   2BCA           01330         goto    TestFor10s
+03D3   2BD4           01331         goto    EqualTens
+03D4                  01332 EqualTens:
+03D4   3000           01333         movlw   0x00
+03D5   00B4           01334         movwf   digit_a
+03D6   2BD9           01335         goto    AdjustASCII
+03D7                  01336 LastDigit:
+03D7   0839           01337         movf    prev_value, 0
+03D8   00B4           01338         movwf   digit_a
+03D9                  01339 AdjustASCII:
+03D9   3030           01340         movlw   .48
+03DA   07B6           01341         addwf   digit_c, f
+03DB   07B5           01342         addwf   digit_b, f
+03DC   07B4           01343         addwf   digit_a, f
+03DD   0008           01344         return
+                      01345 
+                      01346 
+03DE                  01347 Delay1mS:
+03DE   3047           01348         movlw     .71               ; delay ~1000uS
+03DF   00F6           01349         movwf     delay
+03E0   0BF6           01350         decfsz    delay,f             ; this loop does 215 cycles
+03E1   2BE0           01351         goto      $-1          
+03E2   0BF6           01352         decfsz    delay,f             ; This loop does 786 cycles
+03E3   2BE2           01353         goto      $-1
+03E4   0008           01354         return
+                      01355 
+                      01356 
+                      01357 
+03E5                  01358 LongDelay:
+03E5   23DE           01359         call    Delay1mS
+03E6   23DE           01360         call    Delay1mS
+03E7   23DE           01361         call    Delay1mS
+03E8   23DE           01362         call    Delay1mS
+03E9   23DE           01363         call    Delay1mS
+03EA   23DE           01364         call    Delay1mS
+03EB   23DE           01365         call    Delay1mS
+03EC   23DE           01366         call    Delay1mS
+03ED   23DE           01367         call    Delay1mS
+03EE   23DE           01368         call    Delay1mS
+03EF   23DE           01369         call    Delay1mS
+03F0   23DE           01370         call    Delay1mS
+03F1   23DE           01371         call    Delay1mS
+03F2   23DE           01372         call    Delay1mS
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 27
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+03F3   23DE           01373         call    Delay1mS
+03F4   23DE           01374         call    Delay1mS
+03F5   23DE           01375         call    Delay1mS
+03F6   23DE           01376         call    Delay1mS
+03F7   23DE           01377         call    Delay1mS
+03F8   23DE           01378         call    Delay1mS
+03F9   23DE           01379         call    Delay1mS
+03FA   23DE           01380         call    Delay1mS
+03FB   23DE           01381         call    Delay1mS
+03FC   23DE           01382         call    Delay1mS
+03FD   23DE           01383         call    Delay1mS
+03FE   23DE           01384         call    Delay1mS
+03FF   23DE           01385         call    Delay1mS
+0400   23DE           01386         call    Delay1mS
+0401   23DE           01387         call    Delay1mS
+0402   23DE           01388         call    Delay1mS
+0403   23DE           01389         call    Delay1mS
+0404   23DE           01390         call    Delay1mS
+0405   23DE           01391         call    Delay1mS
+0406   23DE           01392         call    Delay1mS
+0407   23DE           01393         call    Delay1mS
+0408   23DE           01394         call    Delay1mS
+0409   23DE           01395         call    Delay1mS
+040A   23DE           01396         call    Delay1mS
+040B   23DE           01397         call    Delay1mS
+040C   23DE           01398         call    Delay1mS
+040D   23DE           01399         call    Delay1mS
+040E   23DE           01400         call    Delay1mS
+040F   23DE           01401         call    Delay1mS
+0410   23DE           01402         call    Delay1mS
+0411   23DE           01403         call    Delay1mS
+0412   23DE           01404         call    Delay1mS
+0413   23DE           01405         call    Delay1mS
+0414   23DE           01406         call    Delay1mS
+0415   23DE           01407         call    Delay1mS
+0416   23DE           01408         call    Delay1mS
+0417   23DE           01409         call    Delay1mS
+0418   23DE           01410         call    Delay1mS
+0419   23DE           01411         call    Delay1mS
+041A   23DE           01412         call    Delay1mS
+041B   23DE           01413         call    Delay1mS
+041C   23DE           01414         call    Delay1mS
+041D   23DE           01415         call    Delay1mS
+041E   23DE           01416         call    Delay1mS
+041F   23DE           01417         call    Delay1mS
+0420   23DE           01418         call    Delay1mS
+0421   23DE           01419         call    Delay1mS
+0422   23DE           01420         call    Delay1mS
+0423   23DE           01421         call    Delay1mS
+0424   23DE           01422         call    Delay1mS
+0425   23DE           01423         call    Delay1mS
+0426   23DE           01424         call    Delay1mS
+0427   23DE           01425         call    Delay1mS
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 28
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0428   23DE           01426         call    Delay1mS
+0429   23DE           01427         call    Delay1mS
+042A   23DE           01428         call    Delay1mS
+042B   23DE           01429         call    Delay1mS
+042C   23DE           01430         call    Delay1mS
+042D   23DE           01431         call    Delay1mS
+042E   23DE           01432         call    Delay1mS
+042F   23DE           01433         call    Delay1mS
+0430   23DE           01434         call    Delay1mS
+                      01435 
+0431   0008           01436         return
+                      01437 
+                      01438 
+                      01439         end
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 29
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ABDEN                             00000000
+ABDOVF                            00000007
+ACKDT                             00000005
+ACKEN                             00000004
+ACKSTAT                           00000006
+ADCON0                            0000001F
+ADCON1                            0000009F
+ADCS0                             00000006
+ADCS1                             00000007
+ADDEN                             00000003
+ADFM                              00000007
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADRESH                            0000001E
+ADRESL                            0000009E
+ANS0                              00000000
+ANS1                              00000001
+ANS10                             00000002
+ANS11                             00000003
+ANS12                             00000004
+ANS13                             00000005
+ANS2                              00000002
+ANS3                              00000003
+ANS4                              00000004
+ANS5                              00000005
+ANS6                              00000006
+ANS7                              00000007
+ANS8                              00000000
+ANS9                              00000001
+ANSEL                             00000188
+ANSELH                            00000189
+AddressToOutputs                  00000225
+AdjustASCII                       000003D9
+BAUD                              .100
+BAUDCTL                           00000187
+BCLIE                             00000003
+BCLIF                             00000003
+BF                                00000000
+BRG0                              00000000
+BRG1                              00000001
+BRG10                             00000002
+BRG11                             00000003
+BRG12                             00000004
+BRG13                             00000005
+BRG14                             00000006
+BRG15                             00000007
+BRG16                             00000003
+BRG2                              00000002
+BRG3                              00000003
+BRG4                              00000004
+BRG5                              00000005
+BRG6                              00000006
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 30
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+BRG7                              00000007
+BRG8                              00000000
+BRG9                              00000001
+BRGH                              00000002
+C                                 00000000
+C1CH0                             00000000
+C1CH1                             00000001
+C1IE                              00000005
+C1IF                              00000005
+C1OE                              00000005
+C1ON                              00000007
+C1OUT                             00000006
+C1POL                             00000004
+C1R                               00000002
+C1RSEL                            00000005
+C1SEN                             00000005
+C2CH0                             00000000
+C2CH1                             00000001
+C2IE                              00000006
+C2IF                              00000006
+C2OE                              00000005
+C2ON                              00000007
+C2OUT                             00000006
+C2POL                             00000004
+C2R                               00000002
+C2REN                             00000004
+C2RSEL                            00000004
+C2SYNC                            00000000
+CCP1CON                           00000017
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP1X                             00000005
+CCP1Y                             00000004
+CCP2CON                           0000001D
+CCP2IE                            00000000
+CCP2IF                            00000000
+CCP2M0                            00000000
+CCP2M1                            00000001
+CCP2M2                            00000002
+CCP2M3                            00000003
+CCP2X                             00000005
+CCP2Y                             00000004
+CCPR1H                            00000016
+CCPR1L                            00000015
+CCPR2H                            0000001C
+CCPR2L                            0000001B
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 31
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CHS3                              00000005
+CKE                               00000006
+CKP                               00000004
+CM1CON0                           00000107
+CM2CON0                           00000108
+CM2CON1                           00000109
+CREN                              00000004
+CSRC                              00000007
+ClearRegister                     0000021F
+ClearSID                          00000243
+ClearSIDLoop                      00000247
+ConfigI2C                         000002A8
+D                                 00000005
+DATA_ADDRESS                      00000005
+DC                                00000001
+DC1B0                             00000004
+DC1B1                             00000005
+DC2B0                             00000004
+DC2B1                             00000005
+D_A                               00000005
+Delay1mS                          000003DE
+ECCPAS                            0000009C
+ECCPAS0                           00000004
+ECCPAS1                           00000005
+ECCPAS2                           00000006
+ECCPASE                           00000007
+EEADR                             0000010D
+EEADRH                            0000010F
+EECON1                            0000018C
+EECON2                            0000018D
+EEDAT                             0000010C
+EEDATA                            0000010C
+EEDATH                            0000010E
+EEIE                              00000004
+EEIF                              00000004
+EEPGD                             00000007
+EnableMIDI                        00000294
+EqualTens                         000003D4
+ErrSerialFrame                    00000028
+ErrSerialOver                     00000022
+ExitInterrupt                     0000002C
+F                                 00000001
+FERR                              00000002
+FOSC                              .4000
+FSR                               00000004
+FVREN                             00000000
+FailMain                          00000163
+GCEN                              00000007
+GIE                               00000007
+GO                                00000001
+GO_DONE                           00000001
+GetDigits                         000003B6
+GetRxBuffer                       00000276
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 32
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+GetSerialData                     00000017
+HTS                               00000002
+Hello                             00000331
+HighFreqLookup                    00000039
+I2CFail                           00000304
+I2CWriteSingle                    000002B5
+I2CWriteWord                      000002D9
+I2C_DATA                          00000005
+I2C_READ                          00000002
+I2C_START                         00000003
+I2C_STOP                          00000004
+INDF                              00000000
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IOCB                              00000096
+IOCB0                             00000000
+IOCB1                             00000001
+IOCB2                             00000002
+IOCB3                             00000003
+IOCB4                             00000004
+IOCB5                             00000005
+IOCB6                             00000006
+IOCB7                             00000007
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRP                               00000007
+InitPIC                           000001E4
+InitRxBuffer                      00000254
+InitSID                           00000172
+InitShiftRegister                 00000202
+InitVoice1                        00000187
+InitVoice2                        0000019C
+InitVoice3                        000001B3
+InterruptCode                     00000004
+LC01ADDR                          0x12
+LC01CTRLIN                        0xa0
+LC01CTRLOUT                       0xa1
+LC01DATA                          0x34
+LTS                               00000001
+LastDigit                         000003D7
+LongDelay                         000003E5
+LowFreqLookup                     00000099
+MC1OUT                            00000007
+MC2OUT                            00000006
+MCP_WRITE                         0x40
+MSK                               00000093
+MainLoop                          0000010D
+NOT_A                             00000005
+NOT_ADDRESS                       00000005
+NOT_BO                            00000000
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+NOT_BOR                           00000000
+NOT_DONE                          00000001
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RBPU                          00000007
+NOT_RC8                           00000006
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+NOT_TX8                           00000006
+NOT_W                             00000002
+NOT_WRITE                         00000002
+NextDigit                         000003C8
+NoteOn                            0000014C
+OERR                              00000001
+OPTION_REG                        00000081
+OSCCON                            0000008F
+OSCTUNE                           00000090
+OSFIE                             00000007
+OSFIF                             00000007
+OSTS                              00000003
+P                                 00000004
+P1M0                              00000006
+P1M1                              00000007
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PDC0                              00000000
+PDC1                              00000001
+PDC2                              00000002
+PDC3                              00000003
+PDC4                              00000004
+PDC5                              00000005
+PDC6                              00000006
+PEIE                              00000006
+PEN                               00000002
+PIE1                              0000008C
+PIE2                              0000008D
+PIR1                              0000000C
+PIR2                              0000000D
+PORTA                             00000005
+PORTB                             00000006
+PORTC                             00000007
+PORTD                             00000008
+PORTE                             00000009
+PR2                               00000092
+PRSEN                             00000007
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+PSSAC0                            00000002
+PSSAC1                            00000003
+PSSBD0                            00000000
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PSSBD1                            00000001
+PSTRCON                           0000009D
+PULSR                             00000002
+PULSS                             00000003
+PWM1CON                           0000009B
+PlayNote                          000001B4
+PutRxBuffer                       0000025C
+R                                 00000002
+RBIE                              00000003
+RBIF                              00000000
+RC8_9                             00000006
+RC9                               00000006
+RCD8                              00000000
+RCEN                              00000003
+RCIDL                             00000006
+RCIE                              00000005
+RCIF                              00000005
+RCLK                              00000001
+RCREG                             0000001A
+RCSTA                             00000018
+RD                                00000000
+READ_WRITE                        00000002
+RP0                               00000005
+RP1                               00000006
+RSEN                              00000001
+RX9                               00000006
+RX9D                              00000000
+RX_BUFF_EMPTY                     00000003
+RX_BUFF_FULL                      00000002
+RX_BUFF_LEN                       00000010
+R_W                               00000002
+Repeat                            00000115
+ResetCode                         00000000
+RxBuffEmptyErr                    0000028F
+RxBuffFullErr                     00000275
+RxOverErr                         00000028
+S                                 00000003
+SBOREN                            00000004
+SCKP                              00000004
+SCS                               00000000
+SEN                               00000000
+SENDB                             00000003
+SER                               00000005
+SIDRW                             00000001
+SMP                               00000007
+SPBRG                             00000099
+SPBRGH                            0000009A
+SPEN                              00000007
+SR0                               00000006
+SR1                               00000007
+SRCLK                             00000000
+SRCLR                             00000000
+SRCON                             00000185
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 35
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+SREN                              00000005
+SSPADD                            00000093
+SSPBUF                            00000013
+SSPCON                            00000014
+SSPCON2                           00000091
+SSPEN                             00000005
+SSPIE                             00000003
+SSPIF                             00000003
+SSPM0                             00000000
+SSPM1                             00000001
+SSPM2                             00000002
+SSPM3                             00000003
+SSPMSK                            00000093
+SSPOV                             00000006
+SSPSTAT                           00000094
+STATUS                            00000003
+STRA                              00000000
+STRB                              00000001
+STRC                              00000002
+STRD                              00000003
+STRSYNC                           00000004
+SWDTEN                            00000000
+SYNC                              00000004
+Send_I2C_Byte                     00000309
+SetCursor                         00000392
+SetOutputs                        00000219
+SetSerialHigh                     00000209
+SetSerialLow                      00000211
+SetupMCP                          00000313
+Start                             000000F9
+StopNote                          000001D7
+StoreData                         00000265
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1GIV                             00000007
+T1GSS                             00000001
+T1INSYNC                          00000002
+T1OSCEN                           00000003
+T1SYNC                            00000002
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000012
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR1CS                            00000001
+TMR1GE                            00000006
+TMR1H                             0000000F
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 36
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+TMR1ON                            00000000
+TMR2                              00000011
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000085
+TRISB                             00000086
+TRISC                             00000087
+TRISD                             00000088
+TRISE                             00000089
+TRMT                              00000001
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000003
+TUN4                              00000004
+TX8_9                             00000006
+TX9                               00000006
+TX9D                              00000000
+TXD8                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXREG                             00000019
+TXSTA                             00000098
+TX_BUFF_EMPTY                     00000001
+TX_BUFF_FULL                      00000000
+TX_BUFF_LEN                       00000010
+Test                              000003BE
+TestFor10s                        000003CA
+UA                                00000001
+ULPWUE                            00000005
+ULPWUIE                           00000002
+ULPWUIF                           00000002
+VCFG0                             00000004
+VCFG1                             00000005
+VR0                               00000000
+VR1                               00000001
+VR2                               00000002
+VR3                               00000003
+VRCON                             00000097
+VREN                              00000007
+VROE                              00000006
+VRR                               00000005
+VRSS                              00000004
+W                                 00000000
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 37
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+WCOL                              00000007
+WDTCON                            00000105
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WPUB                              00000095
+WPUB0                             00000000
+WPUB1                             00000001
+WPUB2                             00000002
+WPUB3                             00000003
+WPUB4                             00000004
+WPUB5                             00000005
+WPUB6                             00000006
+WPUB7                             00000007
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+WUE                               00000001
+WaitMSSP                          0000030D
+WriteB                            000003B1
+WriteCharacter                    00000382
+WriteDecimalAsASCII               000003A9
+Z                                 00000002
+_BOR21V                           00003EFF
+_BOR40V                           00003FFF
+_BOR_NSLEEP                       00003EFF
+_BOR_OFF                          00003CFF
+_BOR_ON                           00003FFF
+_BOR_SBODEN                       00003DFF
+_CONFIG1                          00002007
+_CONFIG2                          00002008
+_CPD_OFF                          00003FFF
+_CPD_ON                           00003F7F
+_CP_OFF                           00003FFF
+_CP_ON                            00003FBF
+_DEBUG_OFF                        00003FFF
+_DEBUG_ON                         00001FFF
+_EC_OSC                           00003FFB
+_EXTRC                            00003FFF
+_EXTRCIO                          00003FFE
+_EXTRC_OSC_CLKOUT                 00003FFF
+_EXTRC_OSC_NOCLKOUT               00003FFE
+_FCMEN_OFF                        000037FF
+_FCMEN_ON                         00003FFF
+_HS_OSC                           00003FFA
+_IESO_OFF                         00003BFF
+_IESO_ON                          00003FFF
+_INTOSC                           00003FFD
+_INTOSCIO                         00003FFC
+_INTRC_OSC_CLKOUT                 00003FFD
+_INTRC_OSC_NOCLKOUT               00003FFC
+_LP_OSC                           00003FF8
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 38
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_LVP_OFF                          00002FFF
+_LVP_ON                           00003FFF
+_MCLRE_OFF                        00003FDF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FEF
+_WDT_OFF                          00003FF7
+_WDT_ON                           00003FFF
+_WRT_1FOURTH                      00003BFF
+_WRT_256                          00003DFF
+_WRT_HALF                         000039FF
+_WRT_OFF                          00003FFF
+_XT_OSC                           00003FF9
+__16F887                          00000001
+address                           000000F1
+attdec                            00000025
+buffer_data                       0000002F
+character                         000000F9
+column                            000000F8
+control_byte                      000000F0
+counter                           00000024
+data_byte                         000000F2
+data_high                         000000F3
+data_low                          000000F4
+delay                             000000F6
+digit_a                           00000034
+digit_b                           00000035
+digit_c                           00000036
+flags                             0000002A
+freqH                             00000022
+freqL                             00000023
+fsr_temp                          00000073
+message_index                     000000FA
+midi_byte                         00000030
+midi_data1                        00000031
+midi_data2                        00000032
+note_index                        00000029
+num_value                         00000037
+number                            000000F5
+offset                            000000FC
+pcl_save                          00000072
+prev_command                      00000033
+prev_value                        00000039
+pulseWidthH                       00000027
+pulseWidthL                       00000028
+row                               000000F7
+rx_buffer                         000000A0
+rx_end_ptr                        0000002C
+rx_start_ptr                      0000002B
+sidaddress                        00000021
+status_temp                       00000071
+string_index                      000000FB
+susrel                            00000026
+MPASM  5.30                  PIC_SID_MIDI.ASM   1-20-2020  18:52:11         PAGE 39
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+tdata                             000000FD
+temp_value                        00000038
+tobereturned                      00000020
+tx_buffer                         00000120
+tx_end_ptr                        0000002E
+tx_start_ptr                      0000002D
+w_temp                            00000070
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : XX--XXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+00C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0100 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0140 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0180 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+01C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0200 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0240 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0280 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+02C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0300 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0340 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0380 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+03C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0400 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XX--------------
+2000 : -------XX------- ---------------- ---------------- ----------------
+
+All other memory blocks unused.
+
+Program Memory Words Used:  1072
+Program Memory Words Free:  7120
+
+
+Errors   :     0
+Warnings :     0 reported,     0 suppressed
+Messages :     0 reported,   114 suppressed
+
+

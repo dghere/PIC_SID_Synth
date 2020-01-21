@@ -1,0 +1,149 @@
+MPLINK 4.30, Linker
+Linker Map File - Created Mon Jan 20 18:52:12 2020
+
+                                 Section Info
+                  Section       Type    Address   Location Size(Bytes)
+                ---------  ---------  ---------  ---------  ---------
+                   .org_0       code   0x000000    program   0x000000
+                   .org_1       code   0x000000    program   0x000004
+                   .org_2       code   0x000004    program   0x00085c
+.config_2007_PIC_SID_MIDI.O       code   0x002007    program   0x000002
+.config_2008_PIC_SID_MIDI.O       code   0x002008    program   0x000002
+
+
+
+                              Program Memory Usage 
+                               Start         End      
+                           ---------   ---------      
+                            0x000000    0x000001      
+                            0x000004    0x000431      
+                            0x002007    0x002008      
+            1074 out of 8454 program addresses used, program memory utilization is 12%
+
+
+
+                              Symbols - Sorted by Name
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+         AddressToOutputs   0x000225    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              AdjustASCII   0x0003d9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ClearRegister   0x00021f    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 ClearSID   0x000243    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             ClearSIDLoop   0x000247    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                ConfigI2C   0x0002a8    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 Delay1mS   0x0003de    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               EnableMIDI   0x000294    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                EqualTens   0x0003d4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           ErrSerialFrame   0x000028    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ErrSerialOver   0x000022    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ExitInterrupt   0x00002c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 FailMain   0x000163    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                GetDigits   0x0003b6    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              GetRxBuffer   0x000276    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            GetSerialData   0x000017    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                    Hello   0x000331    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           HighFreqLookup   0x000039    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  I2CFail   0x000304    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           I2CWriteSingle   0x0002b5    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             I2CWriteWord   0x0002d9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  InitPIC   0x0001e4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             InitRxBuffer   0x000254    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  InitSID   0x000172    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+        InitShiftRegister   0x000202    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice1   0x000187    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice2   0x00019c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice3   0x0001b3    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            InterruptCode   0x000004    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                LastDigit   0x0003d7    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                LongDelay   0x0003e5    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            LowFreqLookup   0x000099    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 MainLoop   0x00010d    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                NextDigit   0x0003c8    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   NoteOn   0x00014c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 PlayNote   0x0001b4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              PutRxBuffer   0x00025c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   Repeat   0x000115    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                ResetCode   0x000000    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           RxBuffEmptyErr   0x00028f    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            RxBuffFullErr   0x000275    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                RxOverErr   0x000028    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            Send_I2C_Byte   0x000309    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                SetCursor   0x000392    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               SetOutputs   0x000219    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            SetSerialHigh   0x000209    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             SetSerialLow   0x000211    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 SetupMCP   0x000313    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                    Start   0x0000f9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 StopNote   0x0001d7    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                StoreData   0x000265    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                     Test   0x0003be    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               TestFor10s   0x0003ca    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 WaitMSSP   0x00030d    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   WriteB   0x0003b1    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           WriteCharacter   0x000382    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+      WriteDecimalAsASCII   0x0003a9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+
+
+
+                              Symbols - Sorted by Address
+                     Name    Address   Location    Storage File                     
+                ---------  ---------  ---------  --------- ---------                
+                ResetCode   0x000000    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            InterruptCode   0x000004    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            GetSerialData   0x000017    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ErrSerialOver   0x000022    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           ErrSerialFrame   0x000028    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                RxOverErr   0x000028    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ExitInterrupt   0x00002c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           HighFreqLookup   0x000039    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            LowFreqLookup   0x000099    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                    Start   0x0000f9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 MainLoop   0x00010d    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   Repeat   0x000115    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   NoteOn   0x00014c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 FailMain   0x000163    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  InitSID   0x000172    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice1   0x000187    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice2   0x00019c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               InitVoice3   0x0001b3    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 PlayNote   0x0001b4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 StopNote   0x0001d7    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  InitPIC   0x0001e4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+        InitShiftRegister   0x000202    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            SetSerialHigh   0x000209    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             SetSerialLow   0x000211    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               SetOutputs   0x000219    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            ClearRegister   0x00021f    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+         AddressToOutputs   0x000225    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 ClearSID   0x000243    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             ClearSIDLoop   0x000247    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             InitRxBuffer   0x000254    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              PutRxBuffer   0x00025c    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                StoreData   0x000265    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            RxBuffFullErr   0x000275    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              GetRxBuffer   0x000276    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           RxBuffEmptyErr   0x00028f    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               EnableMIDI   0x000294    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                ConfigI2C   0x0002a8    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           I2CWriteSingle   0x0002b5    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+             I2CWriteWord   0x0002d9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                  I2CFail   0x000304    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+            Send_I2C_Byte   0x000309    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 WaitMSSP   0x00030d    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 SetupMCP   0x000313    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                    Hello   0x000331    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+           WriteCharacter   0x000382    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                SetCursor   0x000392    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+      WriteDecimalAsASCII   0x0003a9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                   WriteB   0x0003b1    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                GetDigits   0x0003b6    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                     Test   0x0003be    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                NextDigit   0x0003c8    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+               TestFor10s   0x0003ca    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                EqualTens   0x0003d4    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                LastDigit   0x0003d7    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+              AdjustASCII   0x0003d9    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                 Delay1mS   0x0003de    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+                LongDelay   0x0003e5    program     static E:\Documents\MicroChip_Projects\SID_887_MIDI\pic_SID_MIDI.asm
+
+

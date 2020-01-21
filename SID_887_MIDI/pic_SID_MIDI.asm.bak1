@@ -1,0 +1,901 @@
+; Program to drive SID using 16f887 and a shift register
+
+#include <p16F887.inc>
+
+	__config	_CONFIG1, _INTRC_OSC_CLKOUT & _WDT_OFF & _PWRTE_OFF & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _BOR_OFF & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+	__config    _CONFIG2, _WRT_HALF & _BOR21V
+
+SIDRW	equ	1						; PORTE  old PORTB
+;Shift Register
+SER		equ	5						; PORTC  old PORTB
+SRCLK	equ	0						; PORTC  old PORTB
+RCLK	equ	1						; PORTC  old PORTA
+SRCLR	equ	0						; PORTE  old PORTA
+
+; Set Serial Buffer Length
+RX_BUFF_LEN	EQU		.80
+TX_BUFF_LEN	EQU		RX_BUFF_LEN
+
+; Buffer status bits
+TX_BUFF_FULL	EQU		0
+TX_BUFF_EMPTY	EQU		1
+RX_BUFF_FULL	EQU		2
+RX_BUFF_EMPTY	EQU		3
+
+
+	cblock 0x20
+delay
+address
+freqH
+freqL
+counter
+attdec
+susrel
+pulseWidthH
+pulseWidthL
+note_index
+;EUSART
+flags
+rx_start_ptr
+rx_end_ptr
+buffer_data
+midi_byte
+prev_command
+	endc
+
+	cblock 0x70
+w_temp
+status_temp
+pcl_save
+fsr_temp
+	endc
+
+	cblock 0xa0
+rx_buffer:RX_BUFF_LEN
+	endc
+
+	cblock 0x120
+tx_buffer:TX_BUFF_LEN
+	endc
+
+
+; executed upon reset
+	org		0x0000
+ResetCode:
+	clrf	PCLATH
+	goto	Start
+
+; executed upon interrupt
+	org		0x0004
+InterruptCode:
+	movwf	w_temp
+	swapf	STATUS, w
+	clrf	STATUS
+	movwf	status_temp
+	movf	PCLATH, w
+	movwf	pcl_save
+	clrf	PCLATH
+	movf	FSR, w
+	movwf	fsr_temp
+
+; Test interrupt
+;	movlw	0x22
+;	movwf	freqH
+;	movlw	0x4b
+;	movwf	freqL
+;	call 	PlayNote
+;;  handle interrupts / receive here
+	banksel	PIR1
+	btfsc	PIR1, RP0
+	btfsc	PIE1, RCIE
+	goto 	GetSerialData
+
+	banksel	INTCON
+	btfsc	INTCON, T0IF
+	goto	ServiceTimer
+
+	goto	ExitInterrupt
+
+ServiceTimer:
+	banksel	INTCON
+	bcf	INTCON, T0IF
+
+GetSerialData:
+	
+
+	banksel	RCSTA
+	btfsc	RCSTA, OERR
+	goto ErrSerialOver
+	btfsc	RCSTA, FERR
+	goto	ErrSerialFrame
+
+	banksel	RCREG
+	movf	RCREG, w
+
+	movwf	midi_byte
+	movlw	0xc0
+	subwf	midi_byte
+	btfss	STATUS, Z
+	goto ExitInterrupt
+
+;	movlw	0x90
+;	subwf	midi_byte
+;	btfss	STATUS, Z
+
+	movlw	0x22
+	movwf	freqH
+	movlw	0x4b
+	movwf	freqL
+	call 	PlayNote
+	
+	goto	ExitInterrupt
+
+
+
+ErrSerialOver:
+	banksel	RCSTA
+	bcf		RCSTA, CREN
+	goto ExitInterrupt
+
+ErrSerialFrame:
+	banksel RCREG
+	movf	RCREG, W
+	goto	ExitInterrupt
+
+RxOverErr:
+	banksel	RCREG
+	movf	RCREG, W
+	goto ExitInterrupt
+
+ExitInterrupt:
+	bcf		STATUS, RP0
+	bcf		STATUS, RP1
+
+	movf	fsr_temp, w
+	movwf	FSR
+	movf	pcl_save, w
+	movwf	PCLATH
+	swapf	status_temp, w
+	movwf	STATUS
+	swapf	w_temp, f
+	swapf	w_temp, w
+	retfie
+
+
+
+HighFreqLookup:
+	addwf	PCL
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x01
+	retlw	0x02
+	retlw	0x02
+	retlw	0x02
+	retlw	0x02
+	retlw	0x02
+	retlw	0x02
+	retlw	0x02
+	retlw	0x03
+	retlw	0x03
+	retlw	0x03
+	retlw	0x03
+	retlw	0x03
+	retlw	0x04
+	retlw	0x04
+	retlw	0x04
+	retlw	0x04
+	retlw	0x05
+	retlw	0x05
+	retlw	0x05
+	retlw	0x06
+	retlw	0x06
+	retlw	0x06
+	retlw	0x07
+	retlw	0x07
+	retlw	0x08
+	retlw	0x08
+	retlw	0x09
+	retlw	0x09
+	retlw	0x0a
+	retlw	0x0a
+	retlw	0x0b
+	retlw	0x0c
+	retlw	0x0c
+	retlw	0x0d
+	retlw	0x0e
+	retlw	0x0f
+	retlw	0x10
+	retlw	0x11
+	retlw	0x12
+	retlw	0x13
+	retlw	0x14
+	retlw	0x15
+	retlw	0x16
+	retlw	0x18
+	retlw	0x19
+	retlw	0x1b
+	retlw	0x1c
+	retlw	0x1e
+	retlw	0x20
+	retlw	0x22
+	retlw	0x24
+	retlw	0x26
+	retlw	0x28
+	retlw	0x2b
+	retlw	0x2d
+	retlw	0x30
+	retlw	0x33
+	retlw	0x36
+	retlw	0x39
+	retlw	0x3d
+	retlw	0x40
+	retlw	0x44
+	retlw	0x48
+	retlw	0x4c
+	retlw	0x51
+	retlw	0x56
+	retlw	0x5b
+	retlw	0x60
+	retlw	0x66
+	retlw	0x6c
+	retlw	0x73
+	retlw	0x7a
+	retlw	0x81
+	retlw	0x89
+	retlw	0x91
+	retlw	0x99
+	retlw	0xa3
+	retlw	0xac
+	retlw	0xb7
+	retlw	0xc1
+	retlw	0xcd
+	retlw	0xd9
+	retlw	0xe6
+	retlw	0xf4
+	
+
+
+LowFreqLookup:
+	addwf	PCL
+	retlw	0x12
+	retlw	0x23
+	retlw	0x34
+	retlw	0x46
+	retlw	0x5a
+	retlw	0x6e
+	retlw	0x84
+	retlw	0x8b
+	retlw	0xb3
+	retlw	0xcd
+	retlw	0xe9
+	retlw	0x06
+	retlw	0x25
+	retlw	0x45
+	retlw	0x68
+	retlw	0x8c
+	retlw	0xb3
+	retlw	0xdc
+	retlw	0x08
+	retlw	0x36
+	retlw	0x67
+	retlw	0x9b
+	retlw	0xd2
+	retlw	0x0c
+	retlw	0x49
+	retlw	0x8b
+	retlw	0xd0
+	retlw	0x19
+	retlw	0x67
+	retlw	0xb9
+	retlw	0x10
+	retlw	0x6c
+	retlw	0xce
+	retlw	0x35
+	retlw	0xa3
+	retlw	0x17
+	retlw	0x93
+	retlw	0x15
+	retlw	0x9f
+	retlw	0x32
+	retlw	0xcd
+	retlw	0x72
+	retlw	0x20
+	retlw	0xd8
+	retlw	0x9c
+	retlw	0x6b
+	retlw	0x46
+	retlw	0x2f
+	retlw	0x25
+	retlw	0x2a
+	retlw	0x3f
+	retlw	0x64
+	retlw	0x9a
+	retlw	0xe3
+	retlw	0x3f
+	retlw	0x81
+	retlw	0x38
+	retlw	0xd6
+	retlw	0x80
+	retlw	0x5e
+	retlw	0x4b
+	retlw	0x55
+	retlw	0x7e
+	retlw	0xc8
+	retlw	0x34
+	retlw	0xc6
+	retlw	0x7f
+	retlw	0x61
+	retlw	0x6f
+	retlw	0xac
+	retlw	0x1a
+	retlw	0xbc
+	retlw	0x95
+	retlw	0xa9
+	retlw	0xfc
+	retlw	0x8f
+	retlw	0x69
+	retlw	0x8c
+	retlw	0xfe
+	retlw	0x02
+	retlw	0xdf
+	retlw	0x58
+	retlw	0x34
+	retlw	0x78
+	retlw	0x2b
+	retlw	0x53
+	retlw	0xf7
+	retlw	0x1f
+	retlw	0xd2
+	retlw	0x19
+	retlw	0xfc
+	retlw	0x85
+	retlw	0xbd
+	retlw	0xb0
+	retlw	0x67
+
+
+Start:
+	call	InitPIC
+	call	InitShiftRegister
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+
+
+	call	InitSID
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+
+
+	
+
+
+
+MainLoop:
+	movlw	0x11
+	movwf	freqH
+	movlw	0x25
+	movwf	freqL
+	call 	PlayNote
+
+	clrf	note_index
+Repeat:
+	
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	LongDelay
+	call	StopNote
+	call	ClearRegister
+	call	SetOutputs
+	goto	Repeat
+
+
+	incf	note_index
+
+	goto Repeat
+
+InitSID:
+	call	ClearSID
+
+	movlw	0x73
+	movwf	attdec
+	movlw	0xf2
+	movlw	susrel
+	call	InitVoice1
+	call	InitVoice2
+	call	InitVoice3
+
+	; Set master volume to 15
+	bsf		PORTE, SIDRW				; SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.24
+	movwf	address
+	call	AddressToOutputs
+	movlw	0x0f
+	movwf	PORTD
+	bcf		PORTE, SIDRW				; SID write mode
+	call	Delay1mS
+
+	return
+
+InitVoice1:
+	; Set voice 1 Attack/Decay
+	bsf		PORTE, SIDRW				; SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.5
+	movwf	address
+	call	AddressToOutputs
+	movf	attdec, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW				; SID write mode
+	call	Delay1mS
+
+; Set voice 1 Sustain/Release
+	bsf		PORTE, SIDRW				; SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.6
+	movwf	address
+	call	AddressToOutputs
+	movf	susrel, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW				; SID write mode
+	call	Delay1mS
+
+	return
+
+InitVoice2:
+	banksel	PORTB
+; Set voice 2 Attack/Decay
+	bsf		PORTE, SIDRW				; SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.12
+	movwf	address
+	call	AddressToOutputs
+	movf	attdec, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW				; SID write mode
+	call	Delay1mS
+
+; Set voice 2 Sustain/Release
+	bsf		PORTE, SIDRW				; SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.13
+	movwf	address
+	call	AddressToOutputs
+	movf	susrel, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW				; SID write mode
+	call	Delay1mS
+
+	return
+
+InitVoice3:
+	return
+
+;MainLoop:
+;	incf	address
+;	call	AddressToOutputs
+;	call	Delay1mS
+
+
+
+PlayNote:
+	banksel	PORTB
+; voice 1
+	bsf		PORTE, SIDRW			;  SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.1
+	movwf	address
+	call	AddressToOutputs
+	movf	freqH, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW			;  SID write mode
+	call	Delay1mS
+
+	bsf		PORTE, SIDRW			;  SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.0
+	movwf	address
+	call	AddressToOutputs
+	movf	freqL, w
+	movwf	PORTD
+	bcf		PORTE, SIDRW			;  SID write mode
+	call	Delay1mS
+
+;  Set waveform and gate
+	bsf		PORTE, SIDRW			;  SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.4
+	movwf	address
+	call	AddressToOutputs
+	movlw	b'00100001'
+	movwf	PORTD
+	bcf		PORTE, SIDRW			;  SID write mode
+	call	Delay1mS
+	return
+
+StopNote:
+	banksel	PORTB
+	bsf		PORTE, SIDRW			;  SID read mode
+	call	Delay1mS
+	call	Delay1mS
+	movlw	.4
+	movwf	address
+	call	AddressToOutputs
+	movf	b'01000000'
+	movwf	PORTD
+	bcf		PORTE, SIDRW			;  SID write mode
+	call	Delay1mS
+
+	return
+
+InitPIC:
+
+	banksel	OSCCON
+	movlw	b'01100111'
+	movwf	OSCCON					; Oscillator set to 4 MHz
+
+	banksel	OPTION_REG
+	bcf		OPTION_REG, T0CS
+	bcf		OPTION_REG, PS2
+	bcf		OPTION_REG, PS1
+	bcf		OPTION_REG, PS0
+
+	bcf		PIE2, EEIE
+
+	banksel	TRISA
+	movlw	b'00001000'
+	movwf	TRISA
+	clrf	TRISB
+	clrf	TRISC
+	clrf	TRISD
+	clrf	TRISE
+
+	banksel	ANSEL
+	clrf	ANSEL
+	clrf	ANSELH
+
+	call	InitRxBuffer
+	call	EnableMIDI
+
+	call	LongDelay
+	return
+
+InitShiftRegister:
+	banksel	PORTB
+	bcf		PORTC, SRCLK
+	bcf		PORTC, RCLK
+	bcf		PORTC, SER
+	call	ClearRegister
+	return
+
+SetSerialHigh:
+	banksel	PORTB
+	bsf		PORTC, SER
+	nop
+	bsf		PORTC, SRCLK
+	nop
+	bcf		PORTC, SRCLK
+	return
+
+SetSerialLow:
+	banksel	PORTB
+	bcf		PORTC, SER
+	nop
+	bsf		PORTC, SRCLK
+	nop
+	bcf		PORTC, SRCLK
+	return
+
+SetOutputs:
+	banksel	PORTA
+	bsf	PORTC, RCLK
+	nop
+	BCF	PORTC, RCLK
+	return
+
+ClearRegister:
+	banksel	PORTA
+	bcf	PORTA, SRCLR
+	nop
+	BSF	PORTA, SRCLR
+	return
+
+;called with value to be written in 'address'
+AddressToOutputs:
+	call	ClearRegister
+	banksel	PORTB
+	bcf		PORTC, SER
+	btfsc	address, 0
+	call	SetSerialHigh
+	btfss	address, 0
+	call	SetSerialLow
+	bcf		PORTC, SER
+	btfsc	address, 1
+	call	SetSerialHigh
+	btfss	address, 1
+	call	SetSerialLow
+	bcf		PORTC, SER
+	btfsc	address, 2
+	call	SetSerialHigh
+	btfss	address, 2
+	call	SetSerialLow
+	bcf		PORTC, SER
+	btfsc	address, 3
+	call	SetSerialHigh
+	btfss	address, 3
+	call	SetSerialLow
+	bcf		PORTC, SER
+	btfsc	address, 4
+	call	SetSerialHigh
+	btfss	address, 4
+	call	SetSerialLow
+;	bcf		PORTC, SER
+;	btfsc	address, 5
+;	call	SetSerialHigh
+;	btfss	address, 5
+;	call	SetSerialLow
+	
+	call	SetOutputs
+
+;	call	LongDelay
+;	call	LongDelay
+
+	return
+
+
+	
+
+ClearSID:
+	banksel	PORTA
+	movlw	0x00
+	movwf	address					; Set address to 0 for clear
+ClearSIDLoop:	
+	bsf		PORTE, SIDRW			; R/~W set for read
+	call	Delay1mS				; wait to avoid garbage
+	call	Delay1mS
+	call	AddressToOutputs		; set Address on SID A0-A4
+	clrf	PORTD					; clear SID data D0-D7
+	bcf		PORTE, SIDRW			; SID write mode
+	call	Delay1mS
+	incf	address
+	movlw	.25
+	subwf	address, w
+	btfss	STATUS, Z				;  if address bit 5 set, add = 32 so exit
+	goto	ClearSIDLoop
+	return
+
+InitRxBuffer:
+	bcf		STATUS, RP0
+	bcf		STATUS, RP1				; Bank 0
+	movlw	LOW rx_buffer			; Get RxBuffer address
+	movwf	rx_start_ptr				; Put in Rx Start Ptr
+	movwf	rx_end_ptr				; Also put in Rx End Ptr
+	bcf		flags, RX_BUFF_FULL		; Clear Rx buffer full flag
+	bsf		flags, RX_BUFF_EMPTY		; Clear Rx buffer empty flag
+	return
+
+; Store data received on the RX buffer
+PutRxBuffer:
+	bcf		STATUS, RP0
+	bcf		STATUS, RP1
+	btfsc	flags, RX_BUFF_FULL
+	goto	RxBuffFullErr
+	movwf	buffer_data				; store for later
+	btfss	buffer_data, 7			; test if status command
+	goto	StoreData				; not set, is not status command
+	movf	buffer_data, w			; store back in w 
+	movf	prev_command			; store as previous command for use later
+StoreData:
+	bankisel	rx_buffer
+	movf	rx_end_ptr, w
+	movwf	FSR
+	movf	buffer_data, w
+	movwf	INDF
+
+;  test for wrap around
+	movlw	LOW rx_buffer + RX_BUFF_LEN - 1	; find end of buffer
+	xorwf	rx_end_ptr, w
+	movlw	LOW rx_buffer
+	btfss	STATUS, Z
+	incf	rx_end_ptr, w
+	movwf	rx_end_ptr
+
+; Test if buffer is full
+	subwf	rx_start_ptr, w
+	btfsc	STATUS, Z
+	bsf		flags, RX_BUFF_FULL
+	bcf		flags, RX_BUFF_EMPTY
+	return
+
+RxBuffFullErr:
+	return
+
+; Get data from the receive buffer
+GetRxBuffer:
+	bcf		STATUS, RP0
+	bcf		STATUS, RP1				; Bank 0
+	btfsc	flags, RX_BUFF_EMPTY	; Is the Receive buffer empty?
+	goto	RxBuffEmptyErr			; Handle it if so
+	
+	bsf		STATUS, RP0				; Bank 1
+	bcf		PIE1, RCIE				; Disable Rx interrupts
+	bcf		STATUS, RP0				; Bank 0
+	
+	BANKISEL	rx_buffer			; Set bit for Bank indirect addressing
+	movf	rx_start_ptr, W			; Get the start pointer
+	movwf	FSR						; Put into FSR
+
+; test for buffer pointer wraparound
+	movlw	LOW rx_buffer + RX_BUFF_LEN - 1	; Get last address of the buffer
+	xorwf	rx_start_ptr, W			; Compare with StartPointer
+	movlw	LOW rx_buffer			; Load first address of the buffer
+	btfss	STATUS, Z				; Is it at the last address?
+	incf	rx_start_ptr, W			; No, then increment it
+	movwf	rx_start_ptr				; Store the new value
+	bcf		flags, RX_BUFF_FULL		; Buffer mustn't be full
+
+; Test if buffer is empty
+	xorwf	rx_end_ptr, W				; Compare Start to End
+	btfsc	STATUS, Z				; Is it the same?
+	bsf		flags, RX_BUFF_EMPTY	; If the same, the buffer is empty
+	movf	INDF, W					; get the data from the buffer (indirectly)
+	
+	bsf		STATUS, RP0				; Bank 1
+	bsf		PIE1, RCIE				; Turn interrupts back on
+	bcf		STATUS, RP0				; Bank 0
+	return							; return with databyte in w
+
+; Simply return zero if buffer is empty
+RxBuffEmptyErr:
+	bsf		STATUS, RP0
+	bcf		STATUS, RP1				; Bank 1
+	bsf		PIE1, RCIE				; Enable Rx interrupts
+	bcf		STATUS, RP0				; Bank 0
+	retlw	0 
+
+; MIDI init
+EnableMIDI:
+	banksel	ANSEL
+	clrf	ANSEL
+	clrf	ANSELH
+
+	banksel	SPBRGH
+	movlw	0x00
+	movwf	SPBRGH
+	movlw	0x07				;  Use for 4MHz system clock
+;	movlw	0x0f				;  Use for 8MHz system clock
+	movwf	SPBRG
+	bsf		TXSTA, BRGH
+	bcf		BAUDCTL, BRG16			; Set for 31250 baud
+	bcf		TXSTA, SYNC				; Asynchronous
+	bsf		PIE1, RCIE				; Receive Interrupt enable
+	bsf		INTCON, GIE				; Global Interrupt enable
+	bsf		INTCON, PEIE			; Peripheral Interrupt enable
+	banksel	RCSTA					; Page 0
+	bsf		RCSTA, SPEN				; Enable Serial Port
+	bsf		RCSTA, CREN				; Enable Receive
+;	banksel	TXSTA					; Page 1
+;	bsf		TXSTA, TXEN				; Enable transmit
+	bcf		STATUS, RP0				; return to page 0 (just in case)
+	return
+
+
+Delay1mS:
+	movlw     .71               ; delay ~1000uS
+	movwf     delay
+	decfsz    delay,f             ; this loop does 215 cycles
+	goto      $-1          
+	decfsz    delay,f             ; This loop does 786 cycles
+	goto      $-1
+	return
+
+
+
+LongDelay:
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+	call	Delay1mS
+
+	return
+
+
+	end
