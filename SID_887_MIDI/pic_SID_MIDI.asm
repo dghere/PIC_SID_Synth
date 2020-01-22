@@ -1,5 +1,5 @@
 ; Program to drive SID using 16f887 and a shift register
-
+; Github version
 
 
 #include <p16F887.inc>
