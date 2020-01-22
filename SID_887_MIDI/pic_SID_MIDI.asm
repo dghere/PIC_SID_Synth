@@ -193,7 +193,6 @@ HighFreqLookup:
 	dt		0x44, 0x48, 0x4c, 0x51, 0x56, 0x5b, 0x60, 0x66, 0x6c, 0x73, 0x7a, 0x81
 	dt		0x89, 0x91, 0x99, 0xa3, 0xac, 0xb7, 0xc1, 0xcd, 0xd9, 0xe6, 0xf4
 
-
 LowFreqLookup:
 	addwf	PCL
 	dt		0x12, 0x23, 0x34, 0x46, 0x5a, 0x6e, 0x84, 0x8b, 0xb3, 0xcd, 0xe9, 0x06
@@ -204,7 +203,17 @@ LowFreqLookup:
 	dt		0x4b, 0x55, 0x7e, 0xc8, 0x34, 0xc6, 0x7f, 0x61, 0x6f, 0xac, 0x1a, 0xbc
 	dt		0x95, 0xa9, 0xfc, 0x8f, 0x69, 0x8c, 0xfe, 0x02, 0xdf, 0x58, 0x34, 0x78
 	dt		0x2b, 0x53, 0xf7, 0x1f, 0xd2, 0x19, 0xfc, 0x85, 0xbd, 0xb0, 0x67
-	
+
+NoteLookup:  ; Each note is 3 bytes, so Note * 3 = Address for start of string
+	addwf	PCL
+	dt		"C0 ", "C0#", "D0 ", "D0#", "E0 ", "F0 ", "F0#", "G0 ", "G0#", "A0 ", "A0#", "B0 "
+	dt		"C1 ", "C1#", "D1 ", "D1#", "E1 ", "F1 ", "F1#", "G1 ", "G1#", "A1 ", "A1#", "B1 "
+	dt		"C2 ", "C2#", "D2 ", "D2#", "E2 ", "F2 ", "F2#", "G2 ", "G2#", "A2 ", "A2#", "B2 "
+	dt		"C3 ", "C3#", "D3 ", "D3#", "E3 ", "F3 ", "F3#", "G3 ", "G3#", "A3 ", "A3#", "B3 "
+	dt		"C4 ", "C4#", "D4 ", "D4#", "E4 ", "F4 ", "F4#", "G4 ", "G4#", "A4 ", "A4#", "B4 "
+	dt		"C5 ", "C5#", "D5 ", "D5#", "E5 ", "F5 ", "F5#", "G5 ", "G5#", "A5 ", "A5#", "B5 "
+	dt		"C6 ", "C6#", "D6 ", "D6#", "E6 ", "F6 ", "F6#", "G6 ", "G6#", "A6 ", "A6#", "B6 "
+	dt		"C7 ", "C7#", "D7 ", "D7#", "E7 ", "F7 ", "F7#", "G7 ", "G7#", "A7 ", "A7#"
 
 
 Start:
@@ -370,9 +379,6 @@ NoteOn:
 	bcf		RCSTA, CREN
 	call	Delay1mS
 	bcf		RCSTA, CREN
-
-	
-	
 
 	goto Repeat
 
