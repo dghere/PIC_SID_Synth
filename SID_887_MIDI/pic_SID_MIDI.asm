@@ -69,7 +69,8 @@ num_value
 temp_value
 prev_value
 
-
+multip
+product
 number
 delay
 row
@@ -94,6 +95,7 @@ address
 data_byte
 data_high
 data_low
+tableLow
 	endc
 
 
@@ -182,7 +184,15 @@ ExitInterrupt:
 
 	retfie
 
+
+
+
+;	org 0x200
+
+
+
 HighFreqLookup:
+	clrf	PCLATH
 	addwf	PCL
 	dt		0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02
 	dt		0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x03, 0x04
@@ -192,8 +202,8 @@ HighFreqLookup:
 	dt		0x22, 0x24, 0x26, 0x28, 0x2b, 0x2d, 0x30, 0x33, 0x36, 0x39, 0x3d, 0x40
 	dt		0x44, 0x48, 0x4c, 0x51, 0x56, 0x5b, 0x60, 0x66, 0x6c, 0x73, 0x7a, 0x81
 	dt		0x89, 0x91, 0x99, 0xa3, 0xac, 0xb7, 0xc1, 0xcd, 0xd9, 0xe6, 0xf4
-
 LowFreqLookup:
+	clrf	PCLATH
 	addwf	PCL
 	dt		0x12, 0x23, 0x34, 0x46, 0x5a, 0x6e, 0x84, 0x8b, 0xb3, 0xcd, 0xe9, 0x06
 	dt		0x25, 0x45, 0x68, 0x8c, 0xb3, 0xdc, 0x08, 0x36, 0x67, 0x9b, 0xd2, 0x0c
@@ -204,8 +214,19 @@ LowFreqLookup:
 	dt		0x95, 0xa9, 0xfc, 0x8f, 0x69, 0x8c, 0xfe, 0x02, 0xdf, 0x58, 0x34, 0x78
 	dt		0x2b, 0x53, 0xf7, 0x1f, 0xd2, 0x19, 0xfc, 0x85, 0xbd, 0xb0, 0x67
 
+
 NoteLookup:  ; Each note is 3 bytes, so Note * 3 = Address for start of string
-	addwf	PCL
+;	addwf	PCL
+	addlw	LOW(NoteTableStart)
+	movwf	tableLow
+	movlw	HIGH(NoteTableStart)
+	btfsc	STATUS, C
+	addlw	.1
+	movwf	PCLATH
+	movf	tableLow, w
+	movwf	PCL
+
+NoteTableStart:
 	dt		"C0 ", "C0#", "D0 ", "D0#", "E0 ", "F0 ", "F0#", "G0 ", "G0#", "A0 ", "A0#", "B0 "
 	dt		"C1 ", "C1#", "D1 ", "D1#", "E1 ", "F1 ", "F1#", "G1 ", "G1#", "A1 ", "A1#", "B1 "
 	dt		"C2 ", "C2#", "D2 ", "D2#", "E2 ", "F2 ", "F2#", "G2 ", "G2#", "A2 ", "A2#", "B2 "
@@ -214,6 +235,7 @@ NoteLookup:  ; Each note is 3 bytes, so Note * 3 = Address for start of string
 	dt		"C5 ", "C5#", "D5 ", "D5#", "E5 ", "F5 ", "F5#", "G5 ", "G5#", "A5 ", "A5#", "B5 "
 	dt		"C6 ", "C6#", "D6 ", "D6#", "E6 ", "F6 ", "F6#", "G6 ", "G6#", "A6 ", "A6#", "B6 "
 	dt		"C7 ", "C7#", "D7 ", "D7#", "E7 ", "F7 ", "F7#", "G7 ", "G7#", "A7 ", "A7#"
+
 
 
 Start:
@@ -238,50 +260,9 @@ Start:
 	call	ConfigI2C
 	call	SetupMCP
 
-	movlw	'M'
-	call	WriteCharacter
-	movlw	'I'
-	call	WriteCharacter
-	movlw	'D'
-	call	WriteCharacter
-	movlw	'I'
-	call	WriteCharacter
-	movlw	' '
-	call	WriteCharacter
-	movlw	'R'
-	call	WriteCharacter
-	movlw	'o'
-	call	WriteCharacter
-	movlw	'c'
-	call	WriteCharacter
-	movlw	'k'
-	call	WriteCharacter
-	movlw	's'
-	call	WriteCharacter
-	movlw	'!'
-	call	WriteCharacter
-
-	movlw	.0
-	movwf	column
-	movlw	.1
-	movwf	row
-	call	SetCursor
 	
-	movlw	'S'
-	call	WriteCharacter
-	movlw	'I'
-	call	WriteCharacter
-	movlw	'D'
-	call	WriteCharacter
-	movlw	' '
-	call	WriteCharacter
-	movlw	'F'
-	call	WriteCharacter
-	movlw	'T'
-	call	WriteCharacter
-	movlw	'W'
-	call	WriteCharacter
-
+	movlw	.48
+	call	WriteString
 	
 
 ;	goto	FailMain
@@ -359,7 +340,10 @@ Repeat:
 	call	StopNote
 	goto	Repeat
 NoteOn:
+	call	ClearLCD
 	banksel midi_data1
+	movf	midi_data1, w
+	call	WriteString
 	movf	midi_data1, w
 	call	HighFreqLookup
 	movwf	freqH
@@ -1112,6 +1096,58 @@ WriteCharacter:
 	call	I2CWriteSingle
 	return
 
+WriteString:
+;	Note number 0 - 97 (or whatever) will be in w
+;   Address of the note is note number * 3
+;	product will old the product
+	banksel product
+	movwf	multip
+	clrf	product
+	movlw	0x03
+	movwf	tdata
+	
+	movf	multip, w
+multiLoop:
+	addwf	product, f
+	decf	tdata, f
+	btfss	STATUS, Z
+	goto	multiLoop;
+	movf	product, w
+	movwf	offset
+
+	movlw	0x04
+	movwf	tdata
+StringWriteLoop:
+	movf	offset, w
+	call	NoteLookup
+	movwf	character
+	decf	tdata, f
+	btfsc	STATUS, Z
+	return
+	movf	character, w
+	call	WriteCharacter
+	incf	offset, f
+	goto	StringWriteLoop
+
+ClearLCD:
+	movlw	MCP_WRITE
+	movwf	control_byte
+	movlw	0x12
+	movwf	address
+	movlw	b'00000001'
+	movwf	data_low
+	movlw	b'00000010'
+	movwf	data_high
+	call	I2CWriteWord
+	call	Delay1mS
+	movlw	MCP_WRITE
+	movwf	control_byte
+	movlw	0x13
+	movwf	address
+	movlw	b'00000000'
+	call	I2CWriteSingle
+	return
+
 SetCursor:
 	movlw	0x80
 	addwf	column, f
@@ -1204,6 +1240,8 @@ AdjustASCII:
 	addwf	digit_b, f
 	addwf	digit_a, f
 	return
+
+
 
 
 Delay1mS:
