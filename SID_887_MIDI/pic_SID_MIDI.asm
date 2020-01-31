@@ -11,12 +11,9 @@
 
 #define	MCP_WRITE	0x40
 
-;#define	LC01CTRLIN	0xa0
-;#define	LC01CTRLOUT	0xa1
-;#define	LC01ADDR	0x12
-;#define	LC01DATA	0x34
 #define	BAUD		.100
 #define	FOSC		.4000
+#define	DELAYAMT	.10
 
 ;SID Read/Write Control bit
 SIDRW	equ	1						; PORTE  old PORTB
@@ -45,10 +42,13 @@ sidaddress
 freqH
 freqL
 counter
-attdec
-susrel
-pulseWidthH
-pulseWidthL
+attdecV1
+susrelV1
+waveformV1
+pulseWidthHV1
+pulseWidthLV1
+attdecV2
+susrelV2
 note_index
 ;EUSART
 
@@ -80,6 +80,8 @@ message_index
 string_index
 offset
 tdata
+state
+draw_delay
 	endc
 
 	cblock 0x70
@@ -87,9 +89,7 @@ w_temp
 status_temp
 pcl_save
 fsr_temp
-
 flags
-
 control_byte
 address
 data_byte
@@ -237,8 +237,62 @@ NoteTableStart:
 	dt		"C7 ", "C7#", "D7 ", "D7#", "E7 ", "F7 ", "F7#", "G7 ", "G7#", "A7 ", "A7#"
 
 
+#define	ADSR_HEADER			1
+#define	WAVEFORM_HEADER		2
+#define PULSEWIDTH_HEADER	3
+
+;Strings:
+GetChar:
+;	addwf	PCL
+	addlw	LOW(String0)
+	movwf	tableLow
+	movlw	HIGH(String0)
+	btfsc	STATUS, C
+	addlw	.1
+	movwf	PCLATH
+	movf	tableLow, w
+	movwf	PCL
+;					"----====----===="
+String0:	dt		" VOC1 VOC2 VOC3 ", 0						;0
+String1:	dt		"VOC   A  D  S  R", 0					;1
+;					"_x___01_01_01_01"
+String2:	dt		"Orange", 0							;2
+String3:	dt		"Lower Message", 0					;3
+EmptyLine:	dt		"                ", 0				;4
+AtkString:	dt		"ATK:", 0							;5
+DecString:	dt		"DEC:", 0							;6
+SusString:	dt		"SUS:", 0							;7
+RelString:	dt		"REL:", 0							;8
+VoiceString:dt		"VC", 0								;9
+
+
+GetStringAddress:
+;	addwf	PCL
+	addlw	LOW(StringTable)
+	movwf	tableLow
+	movlw	HIGH(StringTable)
+	btfsc	STATUS, C
+	addlw	.1
+	movwf	PCLATH
+	movf	tableLow, w
+	movwf	PCL
+StringTable:
+	retlw	String0 - String0
+	retlw	String1 - String0
+	retlw	String2 - String0
+	retlw	String3 - String0
+	retlw	EmptyLine - String0
+	retlw	AtkString - String0
+	retlw	DecString - String0
+	retlw	SusString - String0
+	retlw	RelString - String0
+	retlw	VoiceString - String0
+
 
 Start:
+	banksel	draw_delay
+	movlw	DELAYAMT
+	movwf	draw_delay
 	call	InitPIC
 	call	InitShiftRegister
 	call	LongDelay
@@ -261,14 +315,19 @@ Start:
 	call	SetupMCP
 
 	
-	movlw	.48
-	call	WriteString
+;	movlw	.49
+;	call	WriteNoteName
 	
 
 ;	goto	FailMain
 	banksel	PORTA
 	bcf		PORTA, 0
 	
+	banksel	state
+	clrf	state
+	movlw	.1
+	movwf	state
+
 ;	goto $
 MainLoop:
 	banksel	freqH
@@ -291,7 +350,7 @@ Repeat:
 	movlw	0x90
 	subwf	midi_byte, w
 	btfss	STATUS, Z
-	goto	Repeat
+	goto	Draw
 	
 	btfsc	flags, RX_BUFF_EMPTY
 	goto	$-1
@@ -310,6 +369,10 @@ Repeat:
 	btfss	STATUS, Z
 	goto	NoteOn
 	call	StopNote
+Draw:
+	decfsz	draw_delay
+	goto	Repeat
+	call	DrawState
 	goto	Repeat
 
 ; the following until NoteOn: works without interrupts. saving for later
@@ -340,10 +403,7 @@ Repeat:
 	call	StopNote
 	goto	Repeat
 NoteOn:
-	call	ClearLCD
 	banksel midi_data1
-	movf	midi_data1, w
-	call	WriteString
 	movf	midi_data1, w
 	call	HighFreqLookup
 	movwf	freqH
@@ -387,9 +447,9 @@ InitSID:
 	call	ClearSID
 
 	movlw	0x73
-	movwf	attdec
+	movwf	attdecV1
 	movlw	0xf2
-	movlw	susrel
+	movlw	susrelV1
 	call	InitVoice1
 	call	InitVoice2
 	call	InitVoice3
@@ -416,7 +476,7 @@ InitVoice1:
 	movlw	.5
 	movwf	sidaddress
 	call	AddressToOutputs
-	movf	attdec, w
+	movf	attdecV1, w
 	movwf	PORTD
 	bcf		PORTE, SIDRW				; SID write mode
 	call	Delay1mS
@@ -428,7 +488,7 @@ InitVoice1:
 	movlw	.6
 	movwf	sidaddress
 	call	AddressToOutputs
-	movf	susrel, w
+	movf	susrelV1, w
 	movwf	PORTD
 	bcf		PORTE, SIDRW				; SID write mode
 	call	Delay1mS
@@ -444,7 +504,7 @@ InitVoice2:
 	movlw	.12
 	movwf	sidaddress
 	call	AddressToOutputs
-	movf	attdec, w
+	movf	attdecV2, w
 	movwf	PORTD
 	bcf		PORTE, SIDRW				; SID write mode
 	call	Delay1mS
@@ -456,7 +516,7 @@ InitVoice2:
 	movlw	.13
 	movwf	sidaddress
 	call	AddressToOutputs
-	movf	susrel, w
+	movf	susrelV2, w
 	movwf	PORTD
 	bcf		PORTE, SIDRW				; SID write mode
 	call	Delay1mS
@@ -1097,6 +1157,24 @@ WriteCharacter:
 	return
 
 WriteString:
+;	movf	string_index, w
+	call	GetStringAddress
+	movwf	offset
+
+StringWriteLoop:
+	movf	offset, w
+	call	GetChar
+	movwf	character
+	movlw	0x00
+	subwf	character, w
+	btfsc	STATUS, Z
+	return
+	movf	character, w
+	call	WriteCharacter
+	incf	offset, f
+	goto	StringWriteLoop
+
+WriteNoteName:
 ;	Note number 0 - 97 (or whatever) will be in w
 ;   Address of the note is note number * 3
 ;	product will old the product
@@ -1117,7 +1195,7 @@ multiLoop:
 
 	movlw	0x04
 	movwf	tdata
-StringWriteLoop:
+NoteWriteLoop:
 	movf	offset, w
 	call	NoteLookup
 	movwf	character
@@ -1127,7 +1205,7 @@ StringWriteLoop:
 	movf	character, w
 	call	WriteCharacter
 	incf	offset, f
-	goto	StringWriteLoop
+	goto	NoteWriteLoop
 
 ClearLCD:
 	movlw	MCP_WRITE
@@ -1241,7 +1319,108 @@ AdjustASCII:
 	addwf	digit_a, f
 	return
 
+;;  Drawing State subroutines are here
+DrawState:
+	banksel	draw_delay
+	movlw	DELAYAMT
+	movwf	draw_delay
 
+	banksel	state
+TestState0:
+	movf	state, w
+	btfss	STATUS, Z
+	goto	TestState1
+DrawMainDisp:
+;	call	ClearLCD
+	banksel	column
+	movlw	.2
+	movwf	column
+	movlw	.1
+	movwf	row
+	call	SetCursor
+
+
+	banksel	midi_data1
+	movf	midi_data1, w
+	call	WriteNoteName
+	return
+
+TestState1:
+	movlw	.1
+	subwf	state, w
+	btfss	STATUS, Z
+	goto	TestState2
+DrawADSRDisp:
+	call	ClearLCD
+	movlw	.1
+	call	WriteString
+	movlw	0x01
+	movwf	column
+	movlw	0x01
+	movwf	row
+	call	SetCursor
+
+	movlw	.1
+	;current voice variabls here
+	call	WriteDecimalAsASCII
+	movlw	' '
+	call	WriteCharacter
+	movlw	' '
+	call	WriteCharacter
+
+	bcf		STATUS, C
+	movlw	0xf0
+	andwf	attdecV1, w
+	movwf	tdata
+	rrf		tdata, f
+	rrf		tdata, f
+	rrf		tdata, f
+	rrf		tdata, w
+	call	WriteDecimalAsASCII
+	movlw	' '
+	call	WriteCharacter
+
+	movlw	0x0f
+	andwf	attdecV1, w
+	call	WriteDecimalAsASCII
+
+	bcf		STATUS, C
+	movlw	' '
+	call	WriteCharacter
+	movlw	0xf0
+	andwf	susrelV1, w
+	movwf	tdata
+	rrf		tdata, f
+	rrf		tdata, f
+	rrf		tdata, f
+	rrf		tdata, w
+	call	WriteDecimalAsASCII
+	movlw	' '
+	call	WriteCharacter
+
+	movlw	0x0f
+	andwf	susrelV1, w
+	call	WriteDecimalAsASCII
+	
+	return
+
+TestState2:
+	movlw	.2
+	subwf	state, w
+	btfss	STATUS, Z
+	goto	TestState3
+DrawWaveFormDisp:
+	call	ClearLCD
+	movlw	.2
+	call	WriteString
+	return
+
+TestState3:
+DrawBlank:
+	call	ClearLCD
+	movlw	.65
+	call	WriteCharacter
+	return
 
 
 Delay1mS:
